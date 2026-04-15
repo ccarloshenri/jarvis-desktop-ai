@@ -4,29 +4,54 @@ import re
 from datetime import datetime
 from typing import Callable
 
+from jarvis.config.strings import Strings
+
+
+_MONTHS_PT = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
 
 class LocalIntentHandler:
-    def __init__(self, now_provider: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        strings: Strings | None = None,
+        now_provider: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._strings = strings or Strings()
         self._now_provider = now_provider or datetime.now
 
     def handle(self, text: str) -> str | None:
         normalized = self._normalize(text)
-        if self._is_date_query(normalized):
-            return f"Today is {self._now_provider().strftime('%B %d, %Y')}, sir."
-        if self._is_time_query(normalized):
-            return f"It is currently {self._now_provider().strftime('%I:%M %p').lstrip('0')}, sir."
-        if self._is_weather_query(normalized):
-            return "I cannot check weather without internet access, sir."
+        if not normalized:
+            return None
+        if self._matches(normalized, ("que dia e hoje", "que dia e", "what day is today", "what is the date")):
+            return self._strings.get("date_answer", date=self._format_date())
+        if self._matches(normalized, ("que horas sao", "que horas", "what time is it", "tell me the time")):
+            return self._strings.get("time_answer", time=self._format_time())
+        if self._matches(normalized, ("clima", "chover", "tempo hoje", "weather", "rain")):
+            return self._strings.get("weather_unavailable")
         return None
 
     def _normalize(self, text: str) -> str:
-        return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+        lowered = text.lower().translate(
+            str.maketrans("áàâãäéèêëíìîïóòôõöúùûüç", "aaaaaeeeeiiiiooooouuuuc")
+        )
+        return " ".join(re.sub(r"[^\w\s]", " ", lowered).split())
 
-    def _is_date_query(self, text: str) -> bool:
-        return any(phrase in text for phrase in ("what day is today", "what is the date today", "que dia e hoje", "que dia é hoje"))
+    def _matches(self, text: str, phrases: tuple[str, ...]) -> bool:
+        return any(phrase in text for phrase in phrases)
 
-    def _is_time_query(self, text: str) -> bool:
-        return any(phrase in text for phrase in ("what time is it", "tell me the time", "que horas sao", "que horas são"))
+    def _format_date(self) -> str:
+        now = self._now_provider()
+        if self._strings.language == "pt-BR":
+            month = _MONTHS_PT[now.month - 1]
+            return f"{now.day} de {month} de {now.year}"
+        return now.strftime("%B %d, %Y")
 
-    def _is_weather_query(self, text: str) -> bool:
-        return "weather" in text or "rain" in text or "clima" in text or "chover" in text
+    def _format_time(self) -> str:
+        now = self._now_provider()
+        if self._strings.language == "pt-BR":
+            return now.strftime("%H:%M")
+        return now.strftime("%I:%M %p").lstrip("0")

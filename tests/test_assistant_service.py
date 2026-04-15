@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from jarvis.config.strings import Strings
 from jarvis.enums.action_type import ActionType
 from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.models.action_result import ActionResult
@@ -53,75 +54,83 @@ class FakeActionExecutor(IActionExecutor):
         return self._result
 
 
-def test_assistant_service_answers_local_date_query() -> None:
-    tts = FakeTextToSpeech()
-    service = AssistantService(
-        local_intent_handler=LocalIntentHandler(now_provider=lambda: datetime(2026, 4, 14, 15, 45)),
-        command_interpreter=FakeCommandInterpreter(None),
-        action_executor=FakeActionExecutor(ActionResult(True, "Opened.", ActionType.OPEN_APP, "discord")),
-        llm=FakeLLM("ignored"),
-        text_to_speech=tts,
-        audio_feedback=FakeAudioFeedback(),
+STRINGS_PT = Strings("pt-BR")
+
+
+def _build_service(
+    *,
+    local_intent_handler: LocalIntentHandler | None = None,
+    command_interpreter: FakeCommandInterpreter | None = None,
+    action_executor: FakeActionExecutor | None = None,
+    llm: FakeLLM | None = None,
+    tts: FakeTextToSpeech | None = None,
+    audio_feedback: FakeAudioFeedback | None = None,
+) -> AssistantService:
+    return AssistantService(
+        strings=STRINGS_PT,
+        local_intent_handler=local_intent_handler or LocalIntentHandler(strings=STRINGS_PT),
+        command_interpreter=command_interpreter or FakeCommandInterpreter(None),
+        action_executor=action_executor
+        or FakeActionExecutor(ActionResult(True, "Opened.", ActionType.OPEN_APP, "discord")),
+        llm=llm or FakeLLM("ignored"),
+        text_to_speech=tts or FakeTextToSpeech(),
+        audio_feedback=audio_feedback or FakeAudioFeedback(),
         command_mapper=CommandMapper(),
     )
 
-    response = service.handle("What day is today?")
 
-    assert response == "Today is April 14, 2026, sir."
-    assert tts.messages == ["Today is April 14, 2026, sir."]
+def test_assistant_service_answers_local_date_query() -> None:
+    tts = FakeTextToSpeech()
+    service = _build_service(
+        local_intent_handler=LocalIntentHandler(
+            strings=STRINGS_PT, now_provider=lambda: datetime(2026, 4, 14, 15, 45)
+        ),
+        tts=tts,
+    )
+
+    response = service.handle("Que dia é hoje?")
+
+    expected = "Hoje é 14 de abril de 2026, senhor."
+    assert response == expected
+    assert tts.messages == [expected]
 
 
 def test_assistant_service_answers_local_weather_query() -> None:
     tts = FakeTextToSpeech()
-    service = AssistantService(
-        local_intent_handler=LocalIntentHandler(),
-        command_interpreter=FakeCommandInterpreter(None),
-        action_executor=FakeActionExecutor(ActionResult(True, "Opened.", ActionType.OPEN_APP, "discord")),
-        llm=FakeLLM("ignored"),
-        text_to_speech=tts,
-        audio_feedback=FakeAudioFeedback(),
-        command_mapper=CommandMapper(),
-    )
+    service = _build_service(tts=tts)
 
-    response = service.handle("Will it rain today?")
+    response = service.handle("Vai chover hoje?")
 
-    assert response == "I cannot check weather without internet access, sir."
-    assert tts.messages == ["I cannot check weather without internet access, sir."]
+    expected = STRINGS_PT.get("weather_unavailable")
+    assert response == expected
+    assert tts.messages == [expected]
 
 
 def test_assistant_service_uses_llm_for_non_local_question() -> None:
-    llm = FakeLLM("Python is a programming language, sir.")
+    llm = FakeLLM("Python é uma linguagem de programação, senhor.")
     tts = FakeTextToSpeech()
-    service = AssistantService(
-        local_intent_handler=LocalIntentHandler(),
-        command_interpreter=FakeCommandInterpreter(None),
-        action_executor=FakeActionExecutor(ActionResult(True, "Opened.", ActionType.OPEN_APP, "discord")),
-        llm=llm,
-        text_to_speech=tts,
-        audio_feedback=FakeAudioFeedback(),
-        command_mapper=CommandMapper(),
-    )
+    service = _build_service(llm=llm, tts=tts)
 
-    response = service.handle("Explain what Python is")
+    response = service.handle("Explique o que é Python")
 
-    assert response == "Python is a programming language, sir."
-    assert llm.calls == ["Explain what Python is"]
-    assert tts.messages == ["Python is a programming language, sir."]
+    assert response == "Python é uma linguagem de programação, senhor."
+    assert llm.calls == ["Explique o que é Python"]
+    assert tts.messages == ["Python é uma linguagem de programação, senhor."]
 
 
 def test_assistant_service_preserves_success_audio_for_commands() -> None:
     audio_feedback = FakeAudioFeedback()
-    service = AssistantService(
-        local_intent_handler=LocalIntentHandler(),
-        command_interpreter=FakeCommandInterpreter({"action": ActionType.OPEN_APP.value, "target": "discord"}),
-        action_executor=FakeActionExecutor(ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")),
-        llm=FakeLLM("ignored"),
-        text_to_speech=FakeTextToSpeech(),
+    service = _build_service(
+        command_interpreter=FakeCommandInterpreter(
+            {"action": ActionType.OPEN_APP.value, "target": "discord"}
+        ),
+        action_executor=FakeActionExecutor(
+            ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")
+        ),
         audio_feedback=audio_feedback,
-        command_mapper=CommandMapper(),
     )
 
-    result = service.process("Jarvis, open Discord")
+    result = service.process("Jarvis, abra o Discord")
 
     assert result.action_result is not None
     assert result.action_result.success is True
@@ -130,19 +139,17 @@ def test_assistant_service_preserves_success_audio_for_commands() -> None:
 
 def test_assistant_service_does_not_trigger_success_audio_for_failed_command() -> None:
     audio_feedback = FakeAudioFeedback()
-    service = AssistantService(
-        local_intent_handler=LocalIntentHandler(),
-        command_interpreter=FakeCommandInterpreter({"action": ActionType.OPEN_APP.value, "target": "unknown"}),
+    service = _build_service(
+        command_interpreter=FakeCommandInterpreter(
+            {"action": ActionType.OPEN_APP.value, "target": "unknown"}
+        ),
         action_executor=FakeActionExecutor(
             ActionResult(False, "Application 'unknown' was not found.", ActionType.OPEN_APP, "unknown")
         ),
-        llm=FakeLLM("ignored"),
-        text_to_speech=FakeTextToSpeech(),
         audio_feedback=audio_feedback,
-        command_mapper=CommandMapper(),
     )
 
-    result = service.process("Jarvis, open unknown")
+    result = service.process("Jarvis, abra o unknown")
 
     assert result.action_result is not None
     assert result.action_result.success is False

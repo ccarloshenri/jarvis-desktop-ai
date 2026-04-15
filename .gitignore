@@ -1,9 +1,35 @@
 .env
-.pytest_cache/
+.venv/
+venv/
+env/
+
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+htmlcov/
+.coverage
+
 dist/
 build/
 *.spec
-# Added by code-review-graph
+!Jarvis.spec
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*.log
+
+# Agent tooling / personal workspace
+.claude/
+.codex/
+.mcp.json
+CLAUDE.md
 .code-review-graph/

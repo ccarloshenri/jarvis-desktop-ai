@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from jarvis.config.strings import Strings
 from jarvis.interfaces.icommand_interpreter import ICommandInterpreter
 from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.interfaces.illm import ILLM
@@ -17,6 +18,7 @@ LOGGER = logging.getLogger(__name__)
 class AssistantService:
     def __init__(
         self,
+        strings: Strings,
         local_intent_handler: LocalIntentHandler,
         command_interpreter: ICommandInterpreter,
         action_executor: IActionExecutor,
@@ -25,6 +27,7 @@ class AssistantService:
         audio_feedback: AudioFeedbackService,
         command_mapper: CommandMapper,
     ) -> None:
+        self._strings = strings
         self._local_intent_handler = local_intent_handler
         self._command_interpreter = command_interpreter
         self._action_executor = action_executor
@@ -39,7 +42,7 @@ class AssistantService:
     def process(self, text: str) -> InteractionResult:
         cleaned_text = text.strip()
         if not cleaned_text:
-            response = "I could not understand the request, sir."
+            response = self._strings.get("empty_transcript")
             self._text_to_speech.speak(response)
             return InteractionResult(transcript=text, command=None, action_result=None, spoken_response=response)
 
@@ -54,7 +57,7 @@ class AssistantService:
         if command_payload is not None:
             command = self._command_mapper.from_payload(command_payload)
             action_result = self._action_executor.execute(command)
-            response = "Understood, sir." if action_result.success else "Application not found, sir."
+            response = self._strings.get("command_ok") if action_result.success else self._strings.get("command_not_found")
             if action_result.success:
                 self._audio_feedback.play_success_response()
             self._text_to_speech.speak(response)
@@ -76,6 +79,6 @@ class AssistantService:
                 spoken_response=response,
             )
 
-        response = self._llm.interpret(cleaned_text).strip() or "I do not have a response for that right now, sir."
+        response = self._llm.interpret(cleaned_text).strip() or self._strings.get("no_response")
         self._text_to_speech.speak(response)
         return InteractionResult(transcript=cleaned_text, command=None, action_result=None, spoken_response=response)

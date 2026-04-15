@@ -1,27 +1,29 @@
 from __future__ import annotations
 
+from jarvis.config.strings import Strings
 from jarvis.enums.llm_provider import LLMProvider
 from jarvis.interfaces.illm import ILLM
 from jarvis.models.app_settings import AppSettings
 
 
 class LLMFactory:
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(self, settings: AppSettings, strings: Strings) -> None:
         self._settings = settings
+        self._strings = strings
 
     def create(self, provider: LLMProvider | None = None) -> ILLM:
         selected_provider = provider or self._settings.llm_provider
         if selected_provider == LLMProvider.GPT:
             if not self._settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=gpt.")
+                return self._create_fallback()
             return self._create_gpt()
         if selected_provider == LLMProvider.GEMINI:
             if not self._settings.gemini_api_key:
-                raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini.")
+                return self._create_fallback()
             return self._create_gemini()
         if selected_provider == LLMProvider.CLAUDE:
             if not self._settings.anthropic_api_key:
-                raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=claude.")
+                return self._create_fallback()
             return self._create_claude()
         if selected_provider == LLMProvider.NONE:
             return self._create_fallback()
@@ -45,4 +47,4 @@ class LLMFactory:
     def _create_fallback(self) -> ILLM:
         from jarvis.implementations.llm.fallback_llm import FallbackLLM
 
-        return FallbackLLM()
+        return FallbackLLM(strings=self._strings)

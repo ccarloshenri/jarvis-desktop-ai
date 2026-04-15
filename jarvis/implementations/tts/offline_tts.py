@@ -5,7 +5,12 @@ from jarvis.interfaces.itext_to_speech import ITextToSpeech
 
 
 class OfflineTTS(ITextToSpeech):
-    def __init__(self, speech_events: ISpeechEvents | None = None) -> None:
+    def __init__(
+        self,
+        speech_events: ISpeechEvents | None = None,
+        language: str = "pt-BR",
+    ) -> None:
+        self._language = language
         self._engine = self._create_engine()
         self._speech_events = speech_events
         self._configure_voice()
@@ -27,10 +32,16 @@ class OfflineTTS(ITextToSpeech):
 
     def _configure_voice(self) -> None:
         voices = self._engine.getProperty("voices")
-        self._engine.setProperty("rate", 162)
-        self._engine.setProperty("volume", 0.9)
+        self._engine.setProperty("rate", 168)
+        self._engine.setProperty("volume", 0.95)
+        preferred = self._voice_keywords()
         for voice in voices:
-            name = getattr(voice, "name", "").lower()
-            if "zira" in name or "david" in name or "english" in name:
+            identifier = f"{getattr(voice, 'name', '')} {getattr(voice, 'id', '')}".lower()
+            if any(keyword in identifier for keyword in preferred):
                 self._engine.setProperty("voice", voice.id)
-                break
+                return
+
+    def _voice_keywords(self) -> tuple[str, ...]:
+        if self._language.lower().startswith("pt"):
+            return ("portuguese", "portugues", "português", "maria", "daniel", "helena", "brazil", "brasil", "pt-br", "pt_br", "ptb")
+        return ("english", "zira", "david", "en-us", "en_us")

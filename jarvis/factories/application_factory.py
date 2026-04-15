@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from jarvis.config.settings_loader import SettingsLoader
+from jarvis.config.strings import Strings
 from jarvis.factories.llm_factory import LLMFactory
 from jarvis.implementations.audio.pygame_audio_player import PygameAudioPlayer
 from jarvis.implementations.llm.rule_based_command_interpreter import RuleBasedCommandInterpreter
@@ -27,10 +28,11 @@ class ApplicationFactory:
 
     def create(self, qt_app: QApplication) -> ApplicationController:
         settings = SettingsLoader(self._project_root).load()
+        strings = Strings(language=settings.language)
         event_bus = JarvisEventBus()
-        llm = LLMFactory(settings).create()
+        llm = LLMFactory(settings, strings).create()
         speech_to_text = SpeechRecognitionService()
-        text_to_speech = OfflineTTS(speech_events=event_bus)
+        text_to_speech = OfflineTTS(speech_events=event_bus, language=settings.language)
         audio_player = PygameAudioPlayer(speech_events=event_bus)
         audio_feedback = AudioFeedbackService(
             audio_player=audio_player,
@@ -38,7 +40,8 @@ class ApplicationFactory:
             success_audio_path=settings.success_audio_path,
         )
         assistant_service = AssistantService(
-            local_intent_handler=LocalIntentHandler(),
+            strings=strings,
+            local_intent_handler=LocalIntentHandler(strings=strings),
             command_interpreter=RuleBasedCommandInterpreter(),
             action_executor=SystemActionExecutor(WindowsApplicationFinder()),
             llm=llm,
@@ -49,9 +52,9 @@ class ApplicationFactory:
         startup_service = StartupService(audio_feedback=audio_feedback)
         return ApplicationController(
             qt_app=qt_app,
+            strings=strings,
             speech_to_text=speech_to_text,
             assistant_service=assistant_service,
             startup_service=startup_service,
             event_bus=event_bus,
-            asset_path=settings.asset_path,
         )

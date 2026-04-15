@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QObject, QThread
 from PySide6.QtWidgets import QApplication
 
+from jarvis.config.strings import Strings
 from jarvis.interfaces.ispeech_to_text import ISpeechToText
 from jarvis.services.assistant_service import AssistantService
 from jarvis.services.startup_service import StartupService
@@ -17,19 +16,23 @@ class ApplicationController(QObject):
     def __init__(
         self,
         qt_app: QApplication,
+        strings: Strings,
         speech_to_text: ISpeechToText,
         assistant_service: AssistantService,
         startup_service: StartupService,
         event_bus: JarvisEventBus,
-        asset_path: Path,
     ) -> None:
         super().__init__()
         self._qt_app = qt_app
         self._startup_service = startup_service
         self._event_bus = event_bus
-        self._window = MainWindow(asset_path=asset_path)
+        self._window = MainWindow(strings=strings)
         self._thread = QThread()
-        self._worker = AssistantWorker(speech_to_text=speech_to_text, assistant_service=assistant_service)
+        self._worker = AssistantWorker(
+            strings=strings,
+            speech_to_text=speech_to_text,
+            assistant_service=assistant_service,
+        )
         self._worker.moveToThread(self._thread)
         self._wire_events()
 

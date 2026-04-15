@@ -1,24 +1,33 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QMouseEvent
-from PySide6.QtWidgets import QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QMainWindow, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QStackedLayout,
+    QVBoxLayout,
+    QWidget,
+)
 
+from jarvis.config.strings import Strings
 from jarvis.models.interaction_result import InteractionResult
 from jarvis.ui.jarvis_orb import JarvisOrb
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, asset_path: Path) -> None:
+    def __init__(self, strings: Strings) -> None:
         super().__init__()
-        self.setWindowTitle("Jarvis Desktop AI")
-        self.setMinimumSize(980, 720)
+        self._strings = strings
+        self.setWindowTitle(strings.get("window_title"))
+        self.setMinimumSize(880, 640)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._drag_origin: QPoint | None = None
-        self._orb = JarvisOrb(asset_path=asset_path)
+        self._orb = JarvisOrb()
         self._build()
         self._apply_styles()
 
@@ -26,40 +35,71 @@ class MainWindow(QMainWindow):
         outer = QWidget()
         outer_layout = QVBoxLayout(outer)
         outer_layout.setContentsMargins(22, 22, 22, 22)
+
         frame = QWidget()
         frame.setObjectName("windowFrame")
         frame_layout = QVBoxLayout(frame)
-        frame_layout.setContentsMargins(26, 24, 26, 24)
-        frame_layout.setSpacing(20)
-        header_layout = QHBoxLayout()
-        self._title = QLabel("JARVIS")
-        self._title.setObjectName("titleLabel")
-        self._status = QLabel("Status: Booting")
-        self._status.setObjectName("statusLabel")
-        close_button = QPushButton("x")
+        frame_layout.setContentsMargins(26, 18, 26, 26)
+        frame_layout.setSpacing(0)
+
+        top_bar = QHBoxLayout()
+        top_bar.addStretch(1)
+        close_button = QPushButton("×")
         close_button.setObjectName("closeButton")
         close_button.setFixedSize(32, 32)
         close_button.clicked.connect(self.close)
-        header_layout.addWidget(self._title)
-        header_layout.addStretch(1)
-        header_layout.addWidget(self._status)
-        header_layout.addWidget(close_button)
-        self._response = QLabel("System online.")
+        top_bar.addWidget(close_button)
+        frame_layout.addLayout(top_bar)
+
+        center_container = QWidget()
+        stack = QStackedLayout(center_container)
+        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        stack.setContentsMargins(0, 0, 0, 0)
+
+        orb_holder = QWidget()
+        orb_layout = QVBoxLayout(orb_holder)
+        orb_layout.setContentsMargins(0, 0, 0, 0)
+        orb_layout.addStretch(1)
+        orb_layout.addWidget(self._orb, alignment=Qt.AlignmentFlag.AlignCenter)
+        orb_layout.addStretch(1)
+
+        text_holder = QWidget()
+        text_holder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        text_layout = QVBoxLayout(text_holder)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(10)
+        text_layout.addStretch(1)
+
+        self._title = QLabel(self._strings.get("title"))
+        self._title.setObjectName("titleLabel")
+        self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._subtitle = QLabel(self._strings.get("subtitle"))
+        self._subtitle.setObjectName("subtitleLabel")
+        self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._response = QLabel(self._strings.get("response_idle"))
         self._response.setObjectName("responseLabel")
         self._response.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._transcript = QTextEdit()
-        self._transcript.setReadOnly(True)
-        self._transcript.setPlaceholderText("Awaiting voice commands...")
-        self._transcript.setObjectName("transcriptPanel")
-        frame_layout.addLayout(header_layout)
-        frame_layout.addWidget(self._orb, alignment=Qt.AlignmentFlag.AlignCenter)
-        frame_layout.addWidget(self._response)
-        frame_layout.addWidget(self._transcript)
+        self._response.setWordWrap(True)
+
+        text_layout.addWidget(self._title)
+        text_layout.addWidget(self._subtitle)
+        text_layout.addSpacing(18)
+        text_layout.addWidget(self._response)
+        text_layout.addStretch(1)
+
+        stack.addWidget(orb_holder)
+        stack.addWidget(text_holder)
+
+        frame_layout.addWidget(center_container, 1)
+
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(40)
+        shadow.setBlurRadius(44)
         shadow.setOffset(0, 0)
-        shadow.setColor(QColor(0, 255, 255, 36))
+        shadow.setColor(QColor(0, 255, 255, 40))
         frame.setGraphicsEffect(shadow)
+
         outer_layout.addWidget(frame)
         self.setCentralWidget(outer)
 
@@ -67,14 +107,40 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow { background: transparent; }
-            QWidget#windowFrame { background-color: rgba(10, 10, 10, 232); border: 1px solid rgba(0, 255, 255, 0.18); border-radius: 28px; }
-            QLabel { color: #c9ffff; }
-            QLabel#titleLabel { font-family: Bahnschrift; font-size: 34px; font-weight: 700; letter-spacing: 7px; }
-            QLabel#statusLabel { background-color: rgba(0, 255, 255, 0.08); border: 1px solid rgba(0, 255, 255, 0.22); border-radius: 16px; color: #7efcff; padding: 8px 14px; font-family: Consolas; font-size: 12px; }
-            QLabel#responseLabel { color: #8dfdff; font-family: Bahnschrift; font-size: 18px; padding: 6px; }
-            QTextEdit#transcriptPanel { background-color: rgba(6, 16, 16, 0.88); border: 1px solid rgba(0, 255, 255, 0.28); border-radius: 18px; color: #d8ffff; font-family: Consolas; font-size: 14px; padding: 14px; selection-background-color: rgba(0, 255, 255, 0.28); }
-            QPushButton#closeButton { background-color: rgba(255, 255, 255, 0.06); border: 1px solid rgba(0, 255, 255, 0.18); border-radius: 16px; color: #c9ffff; font-family: Consolas; font-size: 14px; }
-            QPushButton#closeButton:hover { background-color: rgba(0, 255, 255, 0.16); }
+            QWidget#windowFrame {
+                background-color: rgba(8, 12, 16, 236);
+                border: 1px solid rgba(0, 255, 255, 0.18);
+                border-radius: 28px;
+            }
+            QLabel#titleLabel {
+                color: #d7ffff;
+                font-family: Bahnschrift;
+                font-size: 72px;
+                font-weight: 700;
+                letter-spacing: 18px;
+            }
+            QLabel#subtitleLabel {
+                color: rgba(125, 230, 240, 0.75);
+                font-family: Bahnschrift;
+                font-size: 14px;
+                letter-spacing: 6px;
+                text-transform: uppercase;
+            }
+            QLabel#responseLabel {
+                color: #8dfdff;
+                font-family: Bahnschrift;
+                font-size: 17px;
+                padding: 6px 36px;
+            }
+            QPushButton#closeButton {
+                background-color: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(0, 255, 255, 0.18);
+                border-radius: 16px;
+                color: #c9ffff;
+                font-family: Consolas;
+                font-size: 18px;
+            }
+            QPushButton#closeButton:hover { background-color: rgba(0, 255, 255, 0.18); }
             """
         )
 
@@ -93,19 +159,16 @@ class MainWindow(QMainWindow):
         super().mouseReleaseEvent(event)
 
     def update_status(self, status: str) -> None:
-        self._status.setText(f"Status: {status}")
+        del status
 
     def update_transcript(self, transcript: str) -> None:
-        self._transcript.append(f"> {transcript}")
+        del transcript
 
     def update_response(self, response: str) -> None:
         self._response.setText(response)
 
     def display_result(self, result: InteractionResult) -> None:
-        if result.command and result.action_result:
-            self._transcript.append(
-                f"[{result.command.action.value}] {result.command.target} -> {result.action_result.message}"
-            )
+        del result
 
     def set_speaking(self, speaking: bool) -> None:
         self._orb.set_speaking(speaking)
