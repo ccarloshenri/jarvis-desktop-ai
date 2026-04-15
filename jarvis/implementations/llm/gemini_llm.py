@@ -5,7 +5,11 @@ from typing import Any
 
 import google.generativeai as genai
 
-from jarvis.implementations.llm.decision_prompt import DECISION_SYSTEM_PROMPT, parse_decision
+from jarvis.implementations.llm.decision_prompt import (
+    DECISION_SYSTEM_PROMPT,
+    build_user_message,
+    parse_decision,
+)
 from jarvis.interfaces.illm import ILLM
 from jarvis.models.llm_decision import LLMDecision
 
@@ -34,7 +38,7 @@ class GeminiLLM(ILLM):
     def decide(self, text: str) -> LLMDecision:
         try:
             response = self._model.generate_content(
-                text.strip(),
+                build_user_message(text),
                 generation_config={
                     "temperature": 0,
                     "response_mime_type": "application/json",

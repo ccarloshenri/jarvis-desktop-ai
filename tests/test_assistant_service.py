@@ -15,10 +15,20 @@ from jarvis.utils.command_mapper import CommandMapper
 
 
 class FakeLLM(ILLM):
-    def __init__(self, response: str, decision: LLMDecision | None = None) -> None:
+    def __init__(
+        self,
+        response: str,
+        decision: LLMDecision | None = None,
+        is_fallback: bool = False,
+    ) -> None:
         self._response = response
         self._decision = decision
+        self._is_fallback = is_fallback
         self.calls: list[str] = []
+
+    @property
+    def is_fallback(self) -> bool:
+        return self._is_fallback
 
     def interpret(self, text: str) -> str:
         self.calls.append(text)
@@ -78,12 +88,13 @@ def _build_service(
     )
 
 
-def test_assistant_service_answers_local_date_query() -> None:
+def test_assistant_service_answers_local_date_query_in_fallback_mode() -> None:
     tts = FakeTextToSpeech()
     service = _build_service(
         local_intent_handler=LocalIntentHandler(
             strings=STRINGS_PT, now_provider=lambda: datetime(2026, 4, 14, 15, 45)
         ),
+        llm=FakeLLM("ignored", is_fallback=True),
         tts=tts,
     )
 
@@ -94,15 +105,30 @@ def test_assistant_service_answers_local_date_query() -> None:
     assert tts.messages == [expected]
 
 
-def test_assistant_service_answers_local_weather_query() -> None:
+def test_assistant_service_answers_local_weather_query_in_fallback_mode() -> None:
     tts = FakeTextToSpeech()
-    service = _build_service(tts=tts)
+    service = _build_service(
+        llm=FakeLLM("ignored", is_fallback=True),
+        tts=tts,
+    )
 
     response = service.handle("Vai chover hoje?")
 
     expected = STRINGS_PT.get("weather_unavailable")
     assert response == expected
     assert tts.messages == [expected]
+
+
+def test_assistant_service_sends_weather_to_llm_when_available() -> None:
+    llm = FakeLLM("Não tenho acesso à previsão do tempo, senhor.")
+    tts = FakeTextToSpeech()
+    service = _build_service(llm=llm, tts=tts)
+
+    response = service.handle("Vai chover amanhã?")
+
+    assert response == "Não tenho acesso à previsão do tempo, senhor."
+    assert llm.calls == ["Vai chover amanhã?"]
+    assert tts.messages == ["Não tenho acesso à previsão do tempo, senhor."]
 
 
 def test_assistant_service_uses_llm_for_non_local_question() -> None:

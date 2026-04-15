@@ -5,7 +5,11 @@ from typing import Any, Callable
 
 import requests
 
-from jarvis.implementations.llm.decision_prompt import DECISION_SYSTEM_PROMPT, parse_decision
+from jarvis.implementations.llm.decision_prompt import (
+    DECISION_SYSTEM_PROMPT,
+    build_user_message,
+    parse_decision,
+)
 from jarvis.interfaces.illm import ILLM
 from jarvis.models.llm_decision import LLMDecision
 
@@ -38,7 +42,7 @@ class OllamaLLM(ILLM):
             "options": {"temperature": 0},
             "messages": [
                 {"role": "system", "content": DECISION_SYSTEM_PROMPT},
-                {"role": "user", "content": text.strip()},
+                {"role": "user", "content": build_user_message(text)},
             ],
         }
         try:

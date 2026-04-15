@@ -58,10 +58,11 @@ class AssistantService:
             self._speak(response)
             return InteractionResult(transcript=text, command=None, action_result=None, spoken_response=response)
 
-        local_response = self._local_intent_handler.handle(cleaned_text)
-        if local_response is not None:
-            self._speak(local_response)
-            return InteractionResult(transcript=cleaned_text, command=None, action_result=None, spoken_response=local_response)
+        if self._llm.is_fallback:
+            local_response = self._local_intent_handler.handle(cleaned_text)
+            if local_response is not None:
+                self._speak(local_response)
+                return InteractionResult(transcript=cleaned_text, command=None, action_result=None, spoken_response=local_response)
 
         command_payload = self._command_interpreter.interpret(cleaned_text)
         if command_payload is not None:

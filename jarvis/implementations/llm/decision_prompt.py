@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 
 from jarvis.models.llm_decision import LLMDecision
+
+
+def build_user_message(text: str, now: datetime | None = None) -> str:
+    """Prepend current date/time context so the LLM can answer time-sensitive questions."""
+    current = now or datetime.now()
+    context = f"[Data atual: {current:%Y-%m-%d}. Hora atual: {current:%H:%M}.]"
+    return f"{context}\n{text.strip()}"
 
 DECISION_SYSTEM_PROMPT = """Você é o Jarvis, um assistente pessoal em português.
 

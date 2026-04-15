@@ -16,6 +16,10 @@ class FallbackLLM(ILLM):
     def __init__(self, strings: Strings | None = None) -> None:
         self._strings = strings or Strings()
 
+    @property
+    def is_fallback(self) -> bool:
+        return True
+
     def interpret(self, text: str) -> str:
         normalized = self._normalize(text)
         if not normalized:

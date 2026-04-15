@@ -4,7 +4,11 @@ import logging
 
 from openai import AuthenticationError, OpenAI, RateLimitError
 
-from jarvis.implementations.llm.decision_prompt import DECISION_SYSTEM_PROMPT, parse_decision
+from jarvis.implementations.llm.decision_prompt import (
+    DECISION_SYSTEM_PROMPT,
+    build_user_message,
+    parse_decision,
+)
 from jarvis.interfaces.illm import ILLM
 from jarvis.models.llm_decision import LLMDecision
 
@@ -27,7 +31,7 @@ class GPTLLM(ILLM):
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": DECISION_SYSTEM_PROMPT},
-                    {"role": "user", "content": text.strip()},
+                    {"role": "user", "content": build_user_message(text)},
                 ],
             )
         except RateLimitError as exc:

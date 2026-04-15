@@ -13,3 +13,8 @@ class ILLM(ABC):
     def decide(self, text: str) -> LLMDecision:
         """Return a structured decision. Default wraps interpret() as a chat reply."""
         return LLMDecision(type="chat", spoken_response=self.interpret(text).strip())
+
+    @property
+    def is_fallback(self) -> bool:
+        """True if this LLM is the offline keyword-based fallback (no real reasoning)."""
+        return False
