@@ -25,6 +25,8 @@ class LLMFactory:
             if not self._settings.anthropic_api_key:
                 return self._create_fallback()
             return self._create_claude()
+        if selected_provider == LLMProvider.OLLAMA:
+            return self._create_ollama()
         if selected_provider == LLMProvider.NONE:
             return self._create_fallback()
         raise ValueError(f"Unsupported LLM provider '{selected_provider.value}'.")
@@ -43,6 +45,14 @@ class LLMFactory:
         from jarvis.implementations.llm.claude_llm import ClaudeLLM
 
         return ClaudeLLM(api_key=self._settings.anthropic_api_key)
+
+    def _create_ollama(self) -> ILLM:
+        from jarvis.implementations.llm.ollama_llm import OllamaLLM
+
+        return OllamaLLM(
+            host=self._settings.ollama_host,
+            model=self._settings.ollama_model,
+        )
 
     def _create_fallback(self) -> ILLM:
         from jarvis.implementations.llm.fallback_llm import FallbackLLM

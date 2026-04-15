@@ -13,3 +13,5 @@ class AppSettings:
     openai_api_key: str
     gemini_api_key: str
     anthropic_api_key: str
+    ollama_host: str
+    ollama_model: str

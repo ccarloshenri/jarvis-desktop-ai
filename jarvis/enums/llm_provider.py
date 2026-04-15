@@ -7,4 +7,5 @@ class LLMProvider(Enum):
     GPT = "gpt"
     GEMINI = "gemini"
     CLAUDE = "claude"
+    OLLAMA = "ollama"
     NONE = "none"

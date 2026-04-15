@@ -29,8 +29,8 @@ Thumbs.db
 logs/
 
 # Runtime binaries (downloaded, not source-controlled)
-tools/
-models/
+/tools/
+/models/
 
 # Agent tooling / personal workspace
 .claude/
