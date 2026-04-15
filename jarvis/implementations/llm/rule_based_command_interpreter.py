@@ -32,6 +32,7 @@ _SEARCH_VERBS = (
     r"busca|busque|buscar"
 )
 _ARTICLES = r"\b(o|a|os|as|um|uma|the|app|application|program|programa|aplicativo)\b"
+_TRAILING_FILLERS = re.compile(r"(?:\s+(ai|ali|aqui|tambem|ja|agora|rapido|logo))+$")
 
 _FOR_ME_ANYWHERE = re.compile(r"\s*\b(para|pra|pro)\s+(mim|nos|voce|a\s+gente)\b\s*")
 _SPOTIFY_CONNECTOR = re.compile(r"\s*\b(no|na|pelo|pela|em|on)\s+spotify\b\s*")
@@ -111,7 +112,9 @@ class RuleBasedCommandInterpreter(ICommandInterpreter):
     def _clean_target(self, target: str) -> str:
         value = re.sub(_ARTICLES, "", target)
         value = re.sub(r"[^\w\s\-.]", "", value)
-        return re.sub(r"\s+", " ", value).strip().lower()
+        value = re.sub(r"\s+", " ", value).strip().lower()
+        value = _TRAILING_FILLERS.sub("", value).strip()
+        return value
 
     def _clean_query(self, target: str, browser: bool = False) -> str:
         value = target.strip()

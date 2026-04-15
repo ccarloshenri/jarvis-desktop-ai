@@ -80,6 +80,32 @@ def test_gpt_decide_falls_back_on_invalid_json() -> None:
     assert decision.spoken_response
 
 
+def test_gpt_decide_handles_insufficient_quota() -> None:
+    from openai import RateLimitError
+
+    class _FakeRateLimit(RateLimitError):
+        def __init__(self, message: str) -> None:
+            Exception.__init__(self, message)
+
+    class _QuotaCompletions:
+        def create(self, **kwargs: Any) -> Any:
+            raise _FakeRateLimit(
+                "Error code: 429 - insufficient_quota: You exceeded your current quota."
+            )
+
+    class _QuotaChat:
+        completions = _QuotaCompletions()
+
+    class _QuotaClient:
+        chat = _QuotaChat()
+
+    llm = GPTLLM(api_key="sk-test", client=_QuotaClient())  # type: ignore[arg-type]
+    decision = llm.decide("oi")
+
+    assert decision.type == "chat"
+    assert "sem créditos" in decision.spoken_response.lower()
+
+
 def test_gpt_interpret_delegates_to_decide() -> None:
     content = json.dumps(
         {
