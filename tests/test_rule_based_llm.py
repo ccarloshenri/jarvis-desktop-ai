@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from jarvis.enums.action_type import ActionType
+from jarvis.implementations.llm.rule_based_command_interpreter import RuleBasedCommandInterpreter
+
+
+def test_rule_based_command_interpreter_parses_open_command() -> None:
+    payload = RuleBasedCommandInterpreter().interpret("Jarvis, open Discord")
+    assert payload == {"action": ActionType.OPEN_APP.value, "target": "discord"}
+
+
+def test_rule_based_command_interpreter_parses_close_command() -> None:
+    payload = RuleBasedCommandInterpreter().interpret("Close notepad")
+    assert payload == {"action": ActionType.CLOSE_APP.value, "target": "notepad"}
+
+
+def test_rule_based_command_interpreter_returns_none_for_non_command() -> None:
+    assert RuleBasedCommandInterpreter().interpret("What time is it?") is None
