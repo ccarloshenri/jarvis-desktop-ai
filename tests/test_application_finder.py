@@ -11,10 +11,6 @@ class StubFinder(WindowsApplicationFinder):
     def __init__(self, candidates: list[ApplicationCandidate], cache: ApplicationCache | None = None) -> None:
         super().__init__(
             cache=cache,
-            program_files=Path("unused"),
-            program_files_x86=Path("unused"),
-            local_app_data=Path("unused"),
-            roaming_app_data=Path("unused"),
             common_start_menu=Path("unused"),
             user_start_menu=Path("unused"),
         )
@@ -56,7 +52,7 @@ def test_finder_caches_scan_results() -> None:
     finder = StubFinder([ApplicationCandidate("Steam", Path(r"C:\Apps\Steam\Steam.exe"))], cache=cache)
     assert finder.find("steam") == r"C:\Apps\Steam\Steam.exe"
     assert finder.find("steam") == r"C:\Apps\Steam\Steam.exe"
-    assert finder.scan_count == 6
+    assert finder.scan_count == 2
 
 
 def test_finder_returns_none_when_no_match_exists() -> None:

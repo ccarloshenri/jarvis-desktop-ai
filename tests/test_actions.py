@@ -26,7 +26,7 @@ def test_action_executor_opens_registered_application(monkeypatch) -> None:
     executor = SystemActionExecutor(FakeApplicationFinder(r"C:\Apps\Notepad\Notepad.exe"))
     launched = {}
 
-    def fake_popen(command):
+    def fake_popen(command, **kwargs):
         launched["command"] = command
         return object()
 
@@ -34,7 +34,7 @@ def test_action_executor_opens_registered_application(monkeypatch) -> None:
     result = executor.execute(Command(action=ActionType.OPEN_APP, target="notepad"))
 
     assert result.success is True
-    assert launched["command"] == r"C:\Apps\Notepad\Notepad.exe"
+    assert launched["command"] == [r"C:\Apps\Notepad\Notepad.exe"]
 
 
 def test_action_executor_fails_for_unknown_application() -> None:
