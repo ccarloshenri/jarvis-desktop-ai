@@ -26,6 +26,11 @@ build/
 .DS_Store
 Thumbs.db
 *.log
+logs/
+
+# Runtime binaries (downloaded, not source-controlled)
+tools/
+models/
 
 # Agent tooling / personal workspace
 .claude/
