@@ -26,7 +26,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "goodbye": "Até logo, senhor.",
         "help": "Posso abrir e fechar aplicativos, informar a hora, a data e responder perguntas, senhor.",
         "joke": "Por que o programador confundiu Halloween com Natal? Porque 31 OCT é igual a 25 DEC, senhor.",
-        "fallback_unknown": "Ainda não tenho um provedor de IA configurado, senhor. Mas posso abrir aplicativos, informar a hora, a data e responder perguntas simples.",
+        "fallback_unknown": "Às ordens, senhor.",
     },
     "en-US": {
         "window_title": "Jarvis",
@@ -51,7 +51,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "goodbye": "Goodbye, sir.",
         "help": "I can open and close applications, tell the time and date, and answer questions, sir.",
         "joke": "Why did the programmer confuse Halloween with Christmas? Because 31 OCT equals 25 DEC, sir.",
-        "fallback_unknown": "I do not have an AI provider configured yet, sir. But I can open applications, tell the time, the date, and answer simple questions.",
+        "fallback_unknown": "At your service, sir.",
     },
 }
 

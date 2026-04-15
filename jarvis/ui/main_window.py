@@ -78,15 +78,8 @@ class MainWindow(QMainWindow):
         self._subtitle.setObjectName("subtitleLabel")
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._response = QLabel(self._strings.get("response_idle"))
-        self._response.setObjectName("responseLabel")
-        self._response.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._response.setWordWrap(True)
-
         text_layout.addWidget(self._title)
         text_layout.addWidget(self._subtitle)
-        text_layout.addSpacing(18)
-        text_layout.addWidget(self._response)
         text_layout.addStretch(1)
 
         stack.addWidget(orb_holder)
@@ -126,12 +119,6 @@ class MainWindow(QMainWindow):
                 letter-spacing: 6px;
                 text-transform: uppercase;
             }
-            QLabel#responseLabel {
-                color: #8dfdff;
-                font-family: Bahnschrift;
-                font-size: 17px;
-                padding: 6px 36px;
-            }
             QPushButton#closeButton {
                 background-color: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(0, 255, 255, 0.18);
@@ -165,7 +152,7 @@ class MainWindow(QMainWindow):
         del transcript
 
     def update_response(self, response: str) -> None:
-        self._response.setText(response)
+        del response
 
     def display_result(self, result: InteractionResult) -> None:
         del result
