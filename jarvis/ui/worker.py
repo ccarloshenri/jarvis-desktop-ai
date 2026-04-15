@@ -35,15 +35,32 @@ class AssistantWorker(QObject):
 
     def run(self) -> None:
         while self._running:
+            cycle_start = time.perf_counter()
             try:
                 self.status_changed.emit(self._strings.get("listening"))
+                listen_start = time.perf_counter()
                 transcript = self._speech_to_text.listen()
+                listen_ms = int((time.perf_counter() - listen_start) * 1000)
                 self.transcript_received.emit(transcript)
                 self.status_changed.emit(self._strings.get("processing"))
+                process_start = time.perf_counter()
                 result = self._assistant_service.process(transcript)
+                process_ms = int((time.perf_counter() - process_start) * 1000)
                 self.command_processed.emit(result)
                 self.response_ready.emit(result.spoken_response)
                 self.status_changed.emit(self._strings.get("ready"))
+                cycle_ms = int((time.perf_counter() - cycle_start) * 1000)
+                LOGGER.info(
+                    "cycle_done",
+                    extra={
+                        "event_data": {
+                            "transcript": transcript,
+                            "listen_ms": listen_ms,
+                            "process_ms": process_ms,
+                            "cycle_ms": cycle_ms,
+                        }
+                    },
+                )
             except sr.WaitTimeoutError:
                 continue
             except sr.UnknownValueError:

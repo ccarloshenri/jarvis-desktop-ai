@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent
 from PySide6.QtWidgets import (
+    QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
@@ -16,10 +17,14 @@ from PySide6.QtWidgets import (
 
 from jarvis.config.strings import Strings
 from jarvis.models.interaction_result import InteractionResult
+from jarvis.services.update_checker import ReleaseInfo
 from jarvis.ui.jarvis_orb import JarvisOrb
 
 
 class MainWindow(QMainWindow):
+    update_requested = Signal(object)
+    settings_requested = Signal()
+
     def __init__(self, strings: Strings, debug: bool = False) -> None:
         super().__init__()
         self._strings = strings
@@ -31,6 +36,9 @@ class MainWindow(QMainWindow):
         self._drag_origin: QPoint | None = None
         self._orb = JarvisOrb()
         self._debug_panel: QTextEdit | None = None
+        self._update_banner: QFrame | None = None
+        self._update_banner_label: QLabel | None = None
+        self._pending_release: ReleaseInfo | None = None
         self._build()
         self._apply_styles()
 
@@ -46,6 +54,13 @@ class MainWindow(QMainWindow):
         frame_layout.setSpacing(0)
 
         top_bar = QHBoxLayout()
+        settings_button = QPushButton("⚙")
+        settings_button.setObjectName("settingsButton")
+        settings_button.setFixedSize(32, 32)
+        settings_button.setToolTip("Configurações — trocar ou limpar IA")
+        settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        settings_button.clicked.connect(self.settings_requested.emit)
+        top_bar.addWidget(settings_button)
         if self._debug:
             debug_badge = QLabel("DEBUG")
             debug_badge.setObjectName("debugBadge")
@@ -57,6 +72,9 @@ class MainWindow(QMainWindow):
         close_button.clicked.connect(self.close)
         top_bar.addWidget(close_button)
         frame_layout.addLayout(top_bar)
+
+        self._update_banner = self._build_update_banner()
+        frame_layout.addWidget(self._update_banner)
 
         center_container = QWidget()
         stack = QStackedLayout(center_container)
@@ -162,6 +180,45 @@ class MainWindow(QMainWindow):
                 font-size: 18px;
             }
             QPushButton#closeButton:hover { background-color: rgba(0, 255, 255, 0.18); }
+            QPushButton#settingsButton {
+                background-color: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(0, 255, 255, 0.18);
+                border-radius: 16px;
+                color: #c9ffff;
+                font-family: Segoe UI Symbol;
+                font-size: 16px;
+            }
+            QPushButton#settingsButton:hover { background-color: rgba(0, 255, 255, 0.18); }
+            QFrame#updateBanner {
+                background-color: rgba(0, 255, 255, 0.08);
+                border: 1px solid rgba(0, 255, 255, 0.35);
+                border-radius: 14px;
+                margin-top: 12px;
+            }
+            QLabel#updateBannerLabel {
+                color: #d7ffff;
+                font-family: Bahnschrift;
+                font-size: 13px;
+            }
+            QPushButton#updateButton {
+                background-color: rgba(0, 255, 255, 0.22);
+                border: 1px solid rgba(0, 255, 255, 0.55);
+                border-radius: 10px;
+                color: #eafcff;
+                padding: 6px 16px;
+                font-family: Bahnschrift;
+                font-size: 13px;
+            }
+            QPushButton#updateButton:hover { background-color: rgba(0, 255, 255, 0.38); }
+            QPushButton#updateDismissButton {
+                background-color: transparent;
+                border: 1px solid rgba(0, 255, 255, 0.25);
+                border-radius: 10px;
+                color: rgba(215, 255, 255, 0.8);
+                padding: 6px 12px;
+                font-family: Bahnschrift;
+                font-size: 12px;
+            }
             """
         )
 
@@ -199,3 +256,48 @@ class MainWindow(QMainWindow):
 
     def set_speaking(self, speaking: bool) -> None:
         self._orb.set_speaking(speaking)
+
+    def _build_update_banner(self) -> QFrame:
+        banner = QFrame()
+        banner.setObjectName("updateBanner")
+        banner.setVisible(False)
+        layout = QHBoxLayout(banner)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(12)
+
+        self._update_banner_label = QLabel("")
+        self._update_banner_label.setObjectName("updateBannerLabel")
+        self._update_banner_label.setWordWrap(True)
+        layout.addWidget(self._update_banner_label, 1)
+
+        update_button = QPushButton("Atualizar")
+        update_button.setObjectName("updateButton")
+        update_button.clicked.connect(self._on_update_clicked)
+        layout.addWidget(update_button)
+
+        dismiss_button = QPushButton("Depois")
+        dismiss_button.setObjectName("updateDismissButton")
+        dismiss_button.clicked.connect(self.hide_update_banner)
+        layout.addWidget(dismiss_button)
+
+        return banner
+
+    def show_update_banner(self, release: ReleaseInfo) -> None:
+        if self._update_banner is None or self._update_banner_label is None:
+            return
+        self._pending_release = release
+        summary = (release.body or "").strip().splitlines()
+        headline = summary[0] if summary else "Nova versão disponível."
+        self._update_banner_label.setText(
+            f"<b>Atualização disponível — v{release.version}</b><br/>{headline}"
+        )
+        self._update_banner.setVisible(True)
+
+    def hide_update_banner(self) -> None:
+        if self._update_banner is not None:
+            self._update_banner.setVisible(False)
+
+    def _on_update_clicked(self) -> None:
+        if self._pending_release is not None:
+            self.update_requested.emit(self._pending_release)
+        self.hide_update_banner()

@@ -14,15 +14,19 @@ class JarvisOrb(QWidget):
         super().__init__(parent)
         self.setMinimumSize(420, 420)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self._state = OrbAnimationState()
         self._start_time = time.perf_counter()
         self._last_tick = self._start_time
         self._activity_level = 0.0
         self._activity_animation = QPropertyAnimation(self, b"activityLevel")
-        self._activity_animation.setDuration(280)
-        self._activity_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._activity_animation.setDuration(360)
+        self._activity_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._timer = QTimer(self)
-        self._timer.setInterval(16)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._timer.setInterval(8)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
@@ -44,15 +48,20 @@ class JarvisOrb(QWidget):
 
     def _tick(self) -> None:
         now = time.perf_counter()
-        self._state.advance(now - self._last_tick)
+        dt = now - self._last_tick
+        if dt > 0.25:
+            dt = 0.016
+        self._state.advance(dt)
         self._last_tick = now
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setRenderHints(
+            QPainter.RenderHint.Antialiasing
+            | QPainter.RenderHint.SmoothPixmapTransform, True
+        )
         elapsed = time.perf_counter() - self._start_time
         frame = self._state.sample(elapsed)
         center_x = self.width() / 2
