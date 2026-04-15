@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from jarvis.services.audio_feedback_service import AudioFeedbackService
+from jarvis.config.strings import Strings
+from jarvis.interfaces.itext_to_speech import ITextToSpeech
 
 
 class StartupService:
-    def __init__(self, audio_feedback: AudioFeedbackService) -> None:
-        self._audio_feedback = audio_feedback
+    def __init__(self, strings: Strings, text_to_speech: ITextToSpeech) -> None:
+        self._strings = strings
+        self._text_to_speech = text_to_speech
 
     def execute(self) -> None:
-        self._audio_feedback.play_startup_greeting()
+        self._text_to_speech.speak(self._strings.get("system_online"))

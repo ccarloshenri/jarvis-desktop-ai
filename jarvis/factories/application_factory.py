@@ -7,13 +7,11 @@ from PySide6.QtWidgets import QApplication
 from jarvis.config.settings_loader import SettingsLoader
 from jarvis.config.strings import Strings
 from jarvis.factories.llm_factory import LLMFactory
-from jarvis.implementations.audio.pygame_audio_player import PygameAudioPlayer
 from jarvis.implementations.llm.rule_based_command_interpreter import RuleBasedCommandInterpreter
 from jarvis.implementations.speech.speech_recognition_service import SpeechRecognitionService
 from jarvis.implementations.system.system_action_executor import SystemActionExecutor
 from jarvis.implementations.system.windows_application_finder import WindowsApplicationFinder
 from jarvis.implementations.tts.offline_tts import OfflineTTS
-from jarvis.services.audio_feedback_service import AudioFeedbackService
 from jarvis.services.assistant_service import AssistantService
 from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.services.startup_service import StartupService
@@ -33,12 +31,6 @@ class ApplicationFactory:
         llm = LLMFactory(settings, strings).create()
         speech_to_text = SpeechRecognitionService()
         text_to_speech = OfflineTTS(speech_events=event_bus, language=settings.language)
-        audio_player = PygameAudioPlayer(speech_events=event_bus)
-        audio_feedback = AudioFeedbackService(
-            audio_player=audio_player,
-            startup_audio_path=settings.startup_audio_path,
-            success_audio_path=settings.success_audio_path,
-        )
         assistant_service = AssistantService(
             strings=strings,
             local_intent_handler=LocalIntentHandler(strings=strings),
@@ -46,13 +38,13 @@ class ApplicationFactory:
             action_executor=SystemActionExecutor(WindowsApplicationFinder()),
             llm=llm,
             text_to_speech=text_to_speech,
-            audio_feedback=audio_feedback,
             command_mapper=CommandMapper(),
         )
-        startup_service = StartupService(audio_feedback=audio_feedback)
+        startup_service = StartupService(strings=strings, text_to_speech=text_to_speech)
         return ApplicationController(
             qt_app=qt_app,
             strings=strings,
+            debug=settings.debug,
             speech_to_text=speech_to_text,
             assistant_service=assistant_service,
             startup_service=startup_service,

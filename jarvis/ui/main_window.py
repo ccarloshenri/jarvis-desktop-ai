@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QStackedLayout,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -19,15 +20,17 @@ from jarvis.ui.jarvis_orb import JarvisOrb
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, strings: Strings) -> None:
+    def __init__(self, strings: Strings, debug: bool = False) -> None:
         super().__init__()
         self._strings = strings
+        self._debug = debug
         self.setWindowTitle(strings.get("window_title"))
         self.setMinimumSize(880, 640)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._drag_origin: QPoint | None = None
         self._orb = JarvisOrb()
+        self._debug_panel: QTextEdit | None = None
         self._build()
         self._apply_styles()
 
@@ -43,6 +46,10 @@ class MainWindow(QMainWindow):
         frame_layout.setSpacing(0)
 
         top_bar = QHBoxLayout()
+        if self._debug:
+            debug_badge = QLabel("DEBUG")
+            debug_badge.setObjectName("debugBadge")
+            top_bar.addWidget(debug_badge)
         top_bar.addStretch(1)
         close_button = QPushButton("×")
         close_button.setObjectName("closeButton")
@@ -87,6 +94,13 @@ class MainWindow(QMainWindow):
 
         frame_layout.addWidget(center_container, 1)
 
+        if self._debug:
+            self._debug_panel = QTextEdit()
+            self._debug_panel.setObjectName("debugPanel")
+            self._debug_panel.setReadOnly(True)
+            self._debug_panel.setFixedHeight(140)
+            frame_layout.addWidget(self._debug_panel)
+
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(44)
         shadow.setOffset(0, 0)
@@ -119,6 +133,26 @@ class MainWindow(QMainWindow):
                 letter-spacing: 6px;
                 text-transform: uppercase;
             }
+            QLabel#debugBadge {
+                color: #ff9bd3;
+                background-color: rgba(255, 0, 130, 0.12);
+                border: 1px solid rgba(255, 0, 130, 0.35);
+                border-radius: 10px;
+                padding: 4px 10px;
+                font-family: Consolas;
+                font-size: 11px;
+                letter-spacing: 3px;
+            }
+            QTextEdit#debugPanel {
+                background-color: rgba(4, 10, 14, 0.92);
+                border: 1px solid rgba(0, 255, 255, 0.22);
+                border-radius: 14px;
+                color: #c9ffff;
+                font-family: Consolas;
+                font-size: 12px;
+                padding: 10px 14px;
+                selection-background-color: rgba(0, 255, 255, 0.28);
+            }
             QPushButton#closeButton {
                 background-color: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(0, 255, 255, 0.18);
@@ -149,10 +183,16 @@ class MainWindow(QMainWindow):
         del status
 
     def update_transcript(self, transcript: str) -> None:
-        del transcript
+        if self._debug_panel is None or not transcript:
+            return
+        prefix = self._strings.get("debug_user_prefix")
+        self._debug_panel.append(f"<span style='color:#9bffb8'>{prefix}:</span> {transcript}")
 
     def update_response(self, response: str) -> None:
-        del response
+        if self._debug_panel is None or not response:
+            return
+        prefix = self._strings.get("debug_jarvis_prefix")
+        self._debug_panel.append(f"<span style='color:#8dfdff'>{prefix}:</span> {response}")
 
     def display_result(self, result: InteractionResult) -> None:
         del result

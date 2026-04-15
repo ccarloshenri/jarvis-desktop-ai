@@ -17,6 +17,7 @@ class ApplicationController(QObject):
         self,
         qt_app: QApplication,
         strings: Strings,
+        debug: bool,
         speech_to_text: ISpeechToText,
         assistant_service: AssistantService,
         startup_service: StartupService,
@@ -26,7 +27,7 @@ class ApplicationController(QObject):
         self._qt_app = qt_app
         self._startup_service = startup_service
         self._event_bus = event_bus
-        self._window = MainWindow(strings=strings)
+        self._window = MainWindow(strings=strings, debug=debug)
         self._thread = QThread()
         self._worker = AssistantWorker(
             strings=strings,

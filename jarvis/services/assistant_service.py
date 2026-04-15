@@ -8,7 +8,6 @@ from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.interfaces.illm import ILLM
 from jarvis.interfaces.itext_to_speech import ITextToSpeech
 from jarvis.models.interaction_result import InteractionResult
-from jarvis.services.audio_feedback_service import AudioFeedbackService
 from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.utils.command_mapper import CommandMapper
 
@@ -24,7 +23,6 @@ class AssistantService:
         action_executor: IActionExecutor,
         llm: ILLM,
         text_to_speech: ITextToSpeech,
-        audio_feedback: AudioFeedbackService,
         command_mapper: CommandMapper,
     ) -> None:
         self._strings = strings
@@ -33,7 +31,6 @@ class AssistantService:
         self._action_executor = action_executor
         self._llm = llm
         self._text_to_speech = text_to_speech
-        self._audio_feedback = audio_feedback
         self._command_mapper = command_mapper
 
     def handle(self, text: str) -> str:
@@ -58,8 +55,6 @@ class AssistantService:
             command = self._command_mapper.from_payload(command_payload)
             action_result = self._action_executor.execute(command)
             response = self._strings.get("command_ok") if action_result.success else self._strings.get("command_not_found")
-            if action_result.success:
-                self._audio_feedback.play_success_response()
             self._text_to_speech.speak(response)
             LOGGER.info(
                 "assistant_command_result",

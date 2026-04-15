@@ -32,16 +32,28 @@ class OfflineTTS(ITextToSpeech):
 
     def _configure_voice(self) -> None:
         voices = self._engine.getProperty("voices")
-        self._engine.setProperty("rate", 168)
+        self._engine.setProperty("rate", 165)
         self._engine.setProperty("volume", 0.95)
-        preferred = self._voice_keywords()
-        for voice in voices:
-            identifier = f"{getattr(voice, 'name', '')} {getattr(voice, 'id', '')}".lower()
-            if any(keyword in identifier for keyword in preferred):
-                self._engine.setProperty("voice", voice.id)
-                return
 
-    def _voice_keywords(self) -> tuple[str, ...]:
+        def matches(voice, keywords: tuple[str, ...]) -> bool:
+            identifier = f"{getattr(voice, 'name', '')} {getattr(voice, 'id', '')}".lower()
+            return any(keyword in identifier for keyword in keywords)
+
+        for tier in self._voice_priority():
+            for voice in voices:
+                if matches(voice, tier):
+                    self._engine.setProperty("voice", voice.id)
+                    return
+
+    def _voice_priority(self) -> tuple[tuple[str, ...], ...]:
         if self._language.lower().startswith("pt"):
-            return ("portuguese", "portugues", "português", "maria", "daniel", "helena", "brazil", "brasil", "pt-br", "pt_br", "ptb")
-        return ("english", "zira", "david", "en-us", "en_us")
+            return (
+                ("daniel", "antonio", "ricardo", "paulo"),
+                ("male",),
+                ("pt-br", "pt_br", "ptb", "portuguese", "portugues", "português", "brazil", "brasil"),
+            )
+        return (
+            ("david", "mark", "george", "james"),
+            ("male",),
+            ("en-us", "en_us", "english"),
+        )

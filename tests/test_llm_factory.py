@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from jarvis.config.strings import Strings
@@ -15,11 +13,10 @@ def build_settings(provider: LLMProvider, openai_key: str = "openai-key") -> App
     return AppSettings(
         llm_provider=provider,
         language="pt-BR",
+        debug=False,
         openai_api_key=openai_key,
         gemini_api_key="gemini-key",
         anthropic_api_key="anthropic-key",
-        startup_audio_path=Path("speechs/good_morning.mp3"),
-        success_audio_path=Path("speechs/understood.mp3"),
     )
 
 

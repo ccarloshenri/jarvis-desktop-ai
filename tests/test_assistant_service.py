@@ -30,14 +30,6 @@ class FakeTextToSpeech:
         self.messages.append(text)
 
 
-class FakeAudioFeedback:
-    def __init__(self) -> None:
-        self.success_calls = 0
-
-    def play_success_response(self) -> None:
-        self.success_calls += 1
-
-
 class FakeCommandInterpreter:
     def __init__(self, payload: dict[str, str] | None) -> None:
         self._payload = payload
@@ -64,7 +56,6 @@ def _build_service(
     action_executor: FakeActionExecutor | None = None,
     llm: FakeLLM | None = None,
     tts: FakeTextToSpeech | None = None,
-    audio_feedback: FakeAudioFeedback | None = None,
 ) -> AssistantService:
     return AssistantService(
         strings=STRINGS_PT,
@@ -74,7 +65,6 @@ def _build_service(
         or FakeActionExecutor(ActionResult(True, "Opened.", ActionType.OPEN_APP, "discord")),
         llm=llm or FakeLLM("ignored"),
         text_to_speech=tts or FakeTextToSpeech(),
-        audio_feedback=audio_feedback or FakeAudioFeedback(),
         command_mapper=CommandMapper(),
     )
 
@@ -118,8 +108,8 @@ def test_assistant_service_uses_llm_for_non_local_question() -> None:
     assert tts.messages == ["Python é uma linguagem de programação, senhor."]
 
 
-def test_assistant_service_preserves_success_audio_for_commands() -> None:
-    audio_feedback = FakeAudioFeedback()
+def test_assistant_service_speaks_command_ok_on_success() -> None:
+    tts = FakeTextToSpeech()
     service = _build_service(
         command_interpreter=FakeCommandInterpreter(
             {"action": ActionType.OPEN_APP.value, "target": "discord"}
@@ -127,18 +117,18 @@ def test_assistant_service_preserves_success_audio_for_commands() -> None:
         action_executor=FakeActionExecutor(
             ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")
         ),
-        audio_feedback=audio_feedback,
+        tts=tts,
     )
 
     result = service.process("Jarvis, abra o Discord")
 
     assert result.action_result is not None
     assert result.action_result.success is True
-    assert audio_feedback.success_calls == 1
+    assert tts.messages == [STRINGS_PT.get("command_ok")]
 
 
-def test_assistant_service_does_not_trigger_success_audio_for_failed_command() -> None:
-    audio_feedback = FakeAudioFeedback()
+def test_assistant_service_speaks_command_not_found_on_failure() -> None:
+    tts = FakeTextToSpeech()
     service = _build_service(
         command_interpreter=FakeCommandInterpreter(
             {"action": ActionType.OPEN_APP.value, "target": "unknown"}
@@ -146,11 +136,11 @@ def test_assistant_service_does_not_trigger_success_audio_for_failed_command() -
         action_executor=FakeActionExecutor(
             ActionResult(False, "Application 'unknown' was not found.", ActionType.OPEN_APP, "unknown")
         ),
-        audio_feedback=audio_feedback,
+        tts=tts,
     )
 
     result = service.process("Jarvis, abra o unknown")
 
     assert result.action_result is not None
     assert result.action_result.success is False
-    assert audio_feedback.success_calls == 0
+    assert tts.messages == [STRINGS_PT.get("command_not_found")]
