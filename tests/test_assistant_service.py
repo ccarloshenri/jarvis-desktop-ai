@@ -5,21 +5,30 @@ from datetime import datetime
 from jarvis.config.strings import Strings
 from jarvis.enums.action_type import ActionType
 from jarvis.interfaces.iaction_executor import IActionExecutor
+from jarvis.interfaces.illm import ILLM
 from jarvis.models.action_result import ActionResult
 from jarvis.models.command import Command
+from jarvis.models.llm_decision import LLMDecision
 from jarvis.services.assistant_service import AssistantService
 from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.utils.command_mapper import CommandMapper
 
 
-class FakeLLM:
-    def __init__(self, response: str) -> None:
+class FakeLLM(ILLM):
+    def __init__(self, response: str, decision: LLMDecision | None = None) -> None:
         self._response = response
+        self._decision = decision
         self.calls: list[str] = []
 
     def interpret(self, text: str) -> str:
         self.calls.append(text)
         return self._response
+
+    def decide(self, text: str) -> LLMDecision:
+        self.calls.append(text)
+        if self._decision is not None:
+            return self._decision
+        return LLMDecision(type="chat", spoken_response=self._response)
 
 
 class FakeTextToSpeech:
@@ -108,23 +117,75 @@ def test_assistant_service_uses_llm_for_non_local_question() -> None:
     assert tts.messages == ["Python é uma linguagem de programação, senhor."]
 
 
-def test_assistant_service_speaks_command_ok_on_success() -> None:
+def test_assistant_service_speaks_ack_before_action() -> None:
     tts = FakeTextToSpeech()
+    executor_calls: list[Command] = []
+
+    class RecordingExecutor(IActionExecutor):
+        def execute(self, command: Command) -> ActionResult:
+            executor_calls.append(command)
+            return ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")
+
     service = _build_service(
         command_interpreter=FakeCommandInterpreter(
             {"action": ActionType.OPEN_APP.value, "target": "discord"}
         ),
-        action_executor=FakeActionExecutor(
-            ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")
-        ),
+        action_executor=RecordingExecutor(),
         tts=tts,
     )
 
     result = service.process("Jarvis, abra o Discord")
 
+    expected_ack = STRINGS_PT.get("ack_open_app", target="discord")
     assert result.action_result is not None
     assert result.action_result.success is True
-    assert tts.messages == [STRINGS_PT.get("command_ok")]
+    assert tts.messages == [expected_ack]
+    assert result.spoken_response == expected_ack
+    assert len(executor_calls) == 1
+
+
+def test_assistant_service_executes_action_from_llm_decision() -> None:
+    tts = FakeTextToSpeech()
+    decision = LLMDecision(
+        type="action",
+        spoken_response="Abrindo o Discord.",
+        app="discord",
+        action=ActionType.OPEN_APP.value,
+        parameters={"target": "discord"},
+    )
+    llm = FakeLLM("unused", decision=decision)
+    executor = FakeActionExecutor(
+        ActionResult(True, "Opened discord.", ActionType.OPEN_APP, "discord")
+    )
+    service = _build_service(llm=llm, tts=tts, action_executor=executor)
+
+    result = service.process("poderia abrir o discord para mim")
+
+    assert result.command is not None
+    assert result.command.action == ActionType.OPEN_APP
+    assert result.command.target == "discord"
+    assert result.action_result is not None
+    assert result.action_result.success is True
+    assert tts.messages == ["Abrindo o Discord."]
+
+
+def test_assistant_service_speaks_chat_decision_when_action_invalid() -> None:
+    tts = FakeTextToSpeech()
+    decision = LLMDecision(
+        type="action",
+        spoken_response="Claro, senhor.",
+        app=None,
+        action="open_app",
+        parameters={},
+    )
+    llm = FakeLLM("unused", decision=decision)
+    service = _build_service(llm=llm, tts=tts)
+
+    result = service.process("algo sem alvo")
+
+    assert result.command is None
+    assert result.action_result is None
+    assert tts.messages == ["Claro, senhor."]
 
 
 def test_assistant_service_speaks_command_not_found_on_failure() -> None:
@@ -143,4 +204,5 @@ def test_assistant_service_speaks_command_not_found_on_failure() -> None:
 
     assert result.action_result is not None
     assert result.action_result.success is False
-    assert tts.messages == [STRINGS_PT.get("command_not_found")]
+    expected_ack = STRINGS_PT.get("ack_open_app", target="unknown")
+    assert tts.messages == [expected_ack, STRINGS_PT.get("command_not_found")]
