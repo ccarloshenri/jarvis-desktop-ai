@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Sequence
 
 from openai import AuthenticationError, OpenAI, RateLimitError
 
@@ -10,6 +11,7 @@ from jarvis.implementations.llm.decision_prompt import (
     parse_decision,
 )
 from jarvis.interfaces.illm import ILLM
+from jarvis.models.chat_turn import ChatTurn
 from jarvis.models.llm_decision import LLMDecision
 
 LOGGER = logging.getLogger(__name__)
@@ -23,16 +25,17 @@ class GPTLLM(ILLM):
     def interpret(self, text: str) -> str:
         return self.decide(text).spoken_response
 
-    def decide(self, text: str) -> LLMDecision:
+    def decide(self, text: str, history: Sequence[ChatTurn] | None = None) -> LLMDecision:
+        messages: list[dict[str, str]] = [{"role": "system", "content": DECISION_SYSTEM_PROMPT}]
+        for turn in history or ():
+            messages.append({"role": turn.role, "content": turn.content})
+        messages.append({"role": "user", "content": build_user_message(text)})
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
                 temperature=0,
                 response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": DECISION_SYSTEM_PROMPT},
-                    {"role": "user", "content": build_user_message(text)},
-                ],
+                messages=messages,
             )
         except RateLimitError as exc:
             message = str(exc).lower()

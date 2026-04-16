@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Sequence
 
 import google.generativeai as genai
 
@@ -11,6 +11,7 @@ from jarvis.implementations.llm.decision_prompt import (
     parse_decision,
 )
 from jarvis.interfaces.illm import ILLM
+from jarvis.models.chat_turn import ChatTurn
 from jarvis.models.llm_decision import LLMDecision
 
 LOGGER = logging.getLogger(__name__)
@@ -35,10 +36,15 @@ class GeminiLLM(ILLM):
     def interpret(self, text: str) -> str:
         return self.decide(text).spoken_response
 
-    def decide(self, text: str) -> LLMDecision:
+    def decide(self, text: str, history: Sequence[ChatTurn] | None = None) -> LLMDecision:
+        contents: list[dict[str, Any]] = []
+        for turn in history or ():
+            role = "model" if turn.role == "assistant" else "user"
+            contents.append({"role": role, "parts": [{"text": turn.content}]})
+        contents.append({"role": "user", "parts": [{"text": build_user_message(text)}]})
         try:
             response = self._model.generate_content(
-                build_user_message(text),
+                contents,
                 generation_config={
                     "temperature": 0,
                     "response_mime_type": "application/json",
