@@ -6,6 +6,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from jarvis.apps.browser.browser_app import BrowserApp
+from jarvis.apps.browser.browser_controller import BrowserController
+from jarvis.apps.discord.discord_app import DiscordApp
+from jarvis.apps.discord.discord_keyboard_controller import DiscordKeyboardController
 from jarvis.config.settings_loader import SettingsLoader
 from jarvis.config.strings import Strings
 from jarvis.diagnostics.bundle import Diagnostics, build_diagnostics
@@ -18,6 +22,7 @@ from jarvis.implementations.system.windows_application_finder import WindowsAppl
 from jarvis.implementations.tts.offline_tts import OfflineTTS
 from jarvis.interfaces.itext_to_speech import ITextToSpeech
 from jarvis.services.assistant_service import AssistantService
+from jarvis.services.conversation_memory import ConversationMemory
 from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.services.spotify_keyboard_controller import SpotifyKeyboardController
 from jarvis.services.startup_service import StartupService
@@ -50,14 +55,21 @@ class ApplicationFactory:
         text_to_speech = self._create_tts(settings.language, event_bus)
         application_finder = WindowsApplicationFinder()
         spotify_controller = SpotifyKeyboardController()
+        discord_app = DiscordApp(controller=DiscordKeyboardController())
+        browser_app = BrowserApp(controller=BrowserController())
         assistant_service = AssistantService(
             strings=strings,
             local_intent_handler=LocalIntentHandler(strings=strings),
             command_interpreter=RuleBasedCommandInterpreter(),
-            action_executor=SystemActionExecutor(application_finder, spotify_controller=spotify_controller),
+            action_executor=SystemActionExecutor(
+                application_finder,
+                spotify_controller=spotify_controller,
+                apps=[browser_app, discord_app],
+            ),
             llm=llm,
             text_to_speech=text_to_speech,
             command_mapper=CommandMapper(),
+            conversation_memory=ConversationMemory(max_turns=10),
         )
         startup_service = StartupService(
             strings=strings,

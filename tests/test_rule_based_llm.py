@@ -5,8 +5,13 @@ from jarvis.implementations.llm.rule_based_command_interpreter import RuleBasedC
 
 
 def test_rule_based_command_interpreter_parses_open_command() -> None:
+    payload = RuleBasedCommandInterpreter().interpret("Jarvis, open notepad")
+    assert payload == {"action": ActionType.OPEN_APP.value, "target": "notepad"}
+
+
+def test_rule_based_command_interpreter_routes_open_discord_to_discord_app() -> None:
     payload = RuleBasedCommandInterpreter().interpret("Jarvis, open Discord")
-    assert payload == {"action": ActionType.OPEN_APP.value, "target": "discord"}
+    assert payload == {"action": ActionType.DISCORD_OPEN.value, "parameters": {}}
 
 
 def test_rule_based_command_interpreter_parses_close_command() -> None:

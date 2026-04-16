@@ -7,6 +7,7 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import quote_plus
 
+from jarvis.apps.base_app import BaseApp
 from jarvis.enums.action_type import ActionType
 from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.interfaces.iapplication_finder import IApplicationFinder
@@ -20,11 +21,16 @@ class SystemActionExecutor(IActionExecutor):
         self,
         application_finder: IApplicationFinder,
         spotify_controller: ISpotifyController | None = None,
+        apps: list[BaseApp] | None = None,
     ) -> None:
         self._application_finder = application_finder
         self._spotify_controller = spotify_controller
+        self._apps: list[BaseApp] = list(apps or [])
 
     def execute(self, command: Command) -> ActionResult:
+        for app in self._apps:
+            if app.can_handle(command):
+                return app.execute(command)
         if command.action == ActionType.OPEN_APP:
             return self._open_application(command)
         if command.action == ActionType.CLOSE_APP:
