@@ -27,7 +27,7 @@ class SpeechRecognitionService(ISpeechToText):
         recognizer: sr.Recognizer | None = None,
         microphone: sr.Microphone | None = None,
         listen_timeout: int = 5,
-        phrase_time_limit: int = 15,
+        phrase_time_limit: int = 10,
     ) -> None:
         self._language = _LANGUAGE_ALIASES.get(language.lower(), language)
         self._recognizer = recognizer or sr.Recognizer()
@@ -35,12 +35,24 @@ class SpeechRecognitionService(ISpeechToText):
         self._recognizer.dynamic_energy_adjustment_damping = 0.15
         self._recognizer.dynamic_energy_ratio = 1.5
         self._recognizer.energy_threshold = 200
-        self._recognizer.pause_threshold = 0.7
-        self._recognizer.phrase_threshold = 0.2
-        self._recognizer.non_speaking_duration = 0.4
+        # Phrase-end detection. 0.6s is a compromise: 0.5s cut mid-sentence
+        # pauses too aggressively (users say "Jarvis... abre X" with a natural
+        # gap after the wake word), 0.7s was the old default and felt sluggish.
+        self._recognizer.pause_threshold = 0.6
+        self._recognizer.phrase_threshold = 0.15
+        self._recognizer.non_speaking_duration = 0.35
         self._microphone = microphone or sr.Microphone()
         self._listen_timeout = listen_timeout
         self._phrase_time_limit = phrase_time_limit
+        self._calibrated = False
+
+    def recalibrate(self) -> None:
+        """Force a fresh ambient-noise calibration on the next listen() call.
+
+        Used by the worker when many consecutive recognitions fail — the
+        ambient level likely changed (fan/TV/speech noise) and the one-shot
+        calibration from boot is stale.
+        """
         self._calibrated = False
 
     def listen(self) -> str:
@@ -48,10 +60,10 @@ class SpeechRecognitionService(ISpeechToText):
         with self._microphone as source:
             if not self._calibrated:
                 t0 = time.perf_counter()
-                self._recognizer.adjust_for_ambient_noise(source, duration=0.6)
+                self._recognizer.adjust_for_ambient_noise(source, duration=0.8)
                 self._calibrated = True
                 calibrate_ms = int((time.perf_counter() - t0) * 1000)
-                LOGGER.debug(
+                LOGGER.info(
                     "stt_calibrated",
                     extra={
                         "event_data": {
@@ -68,17 +80,6 @@ class SpeechRecognitionService(ISpeechToText):
             )
             listen_ms = int((time.perf_counter() - listen_start) * 1000)
 
-        LOGGER.debug(
-            "stt_audio_captured",
-            extra={
-                "event_data": {
-                    "listen_ms": listen_ms,
-                    "audio_bytes": len(audio.frame_data),
-                    "sample_rate": audio.sample_rate,
-                }
-            },
-        )
-
         recognize_start = time.perf_counter()
         try:
             transcript = self._recognizer.recognize_google(
@@ -86,11 +87,14 @@ class SpeechRecognitionService(ISpeechToText):
             )
         finally:
             recognize_ms = int((time.perf_counter() - recognize_start) * 1000)
-            LOGGER.debug(
-                "stt_recognize_done",
+            LOGGER.info(
+                "stt_breakdown",
                 extra={
                     "event_data": {
+                        "capture_ms": listen_ms,
                         "recognize_ms": recognize_ms,
+                        "total_ms": listen_ms + recognize_ms,
+                        "audio_bytes": len(audio.frame_data),
                         "language": self._language,
                     }
                 },

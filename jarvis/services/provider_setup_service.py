@@ -58,6 +58,16 @@ class ProviderSetupService:
         provider = self.resolve_active_provider(env_settings)
         settings = replace(env_settings, llm_provider=provider)
         settings = self._apply_stored_key(settings, provider)
+        LOGGER.info(
+            "provider_bootstrap",
+            extra={
+                "event_data": {
+                    "resolved_provider": provider.value,
+                    "key_loaded": bool(self._key_for(settings, provider)),
+                    "needs_dialog": self._needs_dialog(settings, provider),
+                }
+            },
+        )
 
         if not self._needs_dialog(settings, provider):
             return settings
@@ -88,10 +98,22 @@ class ProviderSetupService:
     def apply_choice(self, env_settings: AppSettings, choice: "ProviderChoice") -> AppSettings:
         self._provider_config.save_active_provider(choice.provider)
         username = _KEY_USERNAMES.get(choice.provider)
+        stored = False
         if username is not None and choice.api_key:
-            self._credential_store.set(username, choice.api_key)
+            stored = self._credential_store.set(username, choice.api_key)
         settings = replace(env_settings, llm_provider=choice.provider)
-        return self._apply_stored_key(settings, choice.provider, fallback_key=choice.api_key)
+        settings = self._apply_stored_key(settings, choice.provider, fallback_key=choice.api_key)
+        LOGGER.info(
+            "provider_apply_choice",
+            extra={
+                "event_data": {
+                    "provider": choice.provider.value,
+                    "key_stored_in_keyring": stored,
+                    "key_loaded_into_settings": bool(self._key_for(settings, choice.provider)),
+                }
+            },
+        )
+        return settings
 
     def clear_current_provider(self) -> None:
         current = self._provider_config.load_active_provider()

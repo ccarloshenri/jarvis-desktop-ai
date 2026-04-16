@@ -4,12 +4,16 @@ from datetime import datetime
 
 from jarvis.config.strings import Strings
 from jarvis.enums.action_type import ActionType
+from typing import Sequence
+
 from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.interfaces.illm import ILLM
 from jarvis.models.action_result import ActionResult
+from jarvis.models.chat_turn import ChatTurn
 from jarvis.models.command import Command
 from jarvis.models.llm_decision import LLMDecision
 from jarvis.services.assistant_service import AssistantService
+from jarvis.services.conversation_memory import ConversationMemory
 from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.utils.command_mapper import CommandMapper
 
@@ -25,6 +29,7 @@ class FakeLLM(ILLM):
         self._decision = decision
         self._is_fallback = is_fallback
         self.calls: list[str] = []
+        self.history_calls: list[list[ChatTurn]] = []
 
     @property
     def is_fallback(self) -> bool:
@@ -34,8 +39,9 @@ class FakeLLM(ILLM):
         self.calls.append(text)
         return self._response
 
-    def decide(self, text: str) -> LLMDecision:
+    def decide(self, text: str, history: Sequence[ChatTurn] | None = None) -> LLMDecision:
         self.calls.append(text)
+        self.history_calls.append(list(history or ()))
         if self._decision is not None:
             return self._decision
         return LLMDecision(type="chat", spoken_response=self._response)
@@ -75,6 +81,7 @@ def _build_service(
     action_executor: FakeActionExecutor | None = None,
     llm: FakeLLM | None = None,
     tts: FakeTextToSpeech | None = None,
+    conversation_memory: ConversationMemory | None = None,
 ) -> AssistantService:
     return AssistantService(
         strings=STRINGS_PT,
@@ -85,6 +92,7 @@ def _build_service(
         llm=llm or FakeLLM("ignored"),
         text_to_speech=tts or FakeTextToSpeech(),
         command_mapper=CommandMapper(),
+        conversation_memory=conversation_memory,
     )
 
 
@@ -98,7 +106,7 @@ def test_assistant_service_answers_local_date_query_in_fallback_mode() -> None:
         tts=tts,
     )
 
-    response = service.handle("Que dia é hoje?")
+    response = service.handle("Jarvis, que dia é hoje?")
 
     expected = "Hoje é 14 de abril de 2026, senhor."
     assert response == expected
@@ -112,7 +120,7 @@ def test_assistant_service_answers_local_weather_query_in_fallback_mode() -> Non
         tts=tts,
     )
 
-    response = service.handle("Vai chover hoje?")
+    response = service.handle("Jarvis, vai chover hoje?")
 
     expected = STRINGS_PT.get("weather_unavailable")
     assert response == expected
@@ -124,10 +132,10 @@ def test_assistant_service_sends_weather_to_llm_when_available() -> None:
     tts = FakeTextToSpeech()
     service = _build_service(llm=llm, tts=tts)
 
-    response = service.handle("Vai chover amanhã?")
+    response = service.handle("Jarvis, vai chover amanhã?")
 
     assert response == "Não tenho acesso à previsão do tempo, senhor."
-    assert llm.calls == ["Vai chover amanhã?"]
+    assert llm.calls == ["vai chover amanhã?"]
     assert tts.messages == ["Não tenho acesso à previsão do tempo, senhor."]
 
 
@@ -136,10 +144,10 @@ def test_assistant_service_uses_llm_for_non_local_question() -> None:
     tts = FakeTextToSpeech()
     service = _build_service(llm=llm, tts=tts)
 
-    response = service.handle("Explique o que é Python")
+    response = service.handle("Jarvis, explique o que é Python")
 
     assert response == "Python é uma linguagem de programação, senhor."
-    assert llm.calls == ["Explique o que é Python"]
+    assert llm.calls == ["explique o que é Python"]
     assert tts.messages == ["Python é uma linguagem de programação, senhor."]
 
 
@@ -185,7 +193,7 @@ def test_assistant_service_executes_action_from_llm_decision() -> None:
     )
     service = _build_service(llm=llm, tts=tts, action_executor=executor)
 
-    result = service.process("poderia abrir o discord para mim")
+    result = service.process("Jarvis, poderia abrir o discord para mim")
 
     assert result.command is not None
     assert result.command.action == ActionType.OPEN_APP
@@ -207,11 +215,80 @@ def test_assistant_service_speaks_chat_decision_when_action_invalid() -> None:
     llm = FakeLLM("unused", decision=decision)
     service = _build_service(llm=llm, tts=tts)
 
-    result = service.process("algo sem alvo")
+    result = service.process("Jarvis, algo sem alvo")
 
     assert result.command is None
     assert result.action_result is None
     assert tts.messages == ["Claro, senhor."]
+
+
+def test_assistant_service_ignores_utterance_without_wake_word() -> None:
+    tts = FakeTextToSpeech()
+    llm = FakeLLM("resposta que nao deveria aparecer")
+    service = _build_service(llm=llm, tts=tts)
+
+    result = service.process("o que voce acha disso")
+
+    assert result.spoken_response == ""
+    assert result.command is None
+    assert tts.messages == []
+    assert llm.calls == []
+
+
+def test_assistant_service_responds_to_bare_wake_word_with_greeting() -> None:
+    tts = FakeTextToSpeech()
+    service = _build_service(tts=tts)
+
+    result = service.process("Jarvis")
+
+    assert result.spoken_response == STRINGS_PT.get("greeting")
+    assert tts.messages == [STRINGS_PT.get("greeting")]
+
+
+def test_assistant_service_strips_wake_word_before_sending_to_llm() -> None:
+    llm = FakeLLM("ok")
+    service = _build_service(llm=llm)
+
+    service.handle("Jarvis, me conta uma piada")
+
+    assert llm.calls == ["me conta uma piada"]
+
+
+def test_assistant_service_preserves_embedded_wake_word() -> None:
+    llm = FakeLLM("ok")
+    service = _build_service(llm=llm)
+
+    service.handle("Jarvis, fala que foi o Jarvis que mandou")
+
+    # Only the leading wake word is stripped; the embedded one stays.
+    assert llm.calls == ["fala que foi o Jarvis que mandou"]
+
+
+def test_assistant_service_accepts_stt_mishear_charges_as_wake_word() -> None:
+    llm = FakeLLM("ok")
+    tts = FakeTextToSpeech()
+    service = _build_service(llm=llm, tts=tts)
+
+    result = service.process("charges manda um oi para yasmin no discord")
+
+    # Wake-gate must NOT have silenced this utterance.
+    assert result.spoken_response != ""
+
+
+def test_assistant_service_passes_history_to_llm_across_turns() -> None:
+    llm = FakeLLM("Resposta dois.")
+    memory = ConversationMemory(max_turns=10)
+    service = _build_service(llm=llm, conversation_memory=memory)
+
+    service.handle("Jarvis, quem descobriu o Brasil?")
+    service.handle("Jarvis, e quando isso aconteceu?")
+
+    assert len(llm.history_calls) == 2
+    assert llm.history_calls[0] == []
+    second_history = llm.history_calls[1]
+    assert [t.role for t in second_history] == ["user", "assistant"]
+    assert second_history[0].content == "quem descobriu o Brasil?"
+    assert second_history[1].content == "Resposta dois."
 
 
 def test_assistant_service_speaks_command_not_found_on_failure() -> None:

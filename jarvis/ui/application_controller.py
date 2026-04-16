@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QObject, Qt, QThread
 from PySide6.QtWidgets import QApplication
 
 from jarvis.config.strings import Strings
+
+LOGGER = logging.getLogger(__name__)
 from jarvis.diagnostics.crash_report import CrashReport
 from jarvis.diagnostics.exception_handler import CrashNotifier
 from jarvis.diagnostics.issue_reporter import IGitHubIssueReporter
@@ -58,6 +62,7 @@ class ApplicationController(QObject):
             strings=strings,
             speech_to_text=speech_to_text,
             assistant_service=assistant_service,
+            event_bus=event_bus,
         )
         self._worker.moveToThread(self._thread)
         self._wire_events()
@@ -82,16 +87,34 @@ class ApplicationController(QObject):
         self._qt_app.aboutToQuit.connect(self.stop)
 
     def _on_settings_requested(self) -> None:
-        choice = self._provider_setup.open_dialog(
-            current_provider=self._current_settings.llm_provider,
-            parent=self._window,
-        )
-        if choice is None:
-            return
-        new_settings = self._provider_setup.apply_choice(self._env_settings, choice)
-        self._current_settings = new_settings
-        new_llm = LLMFactory(new_settings, self._strings).create()
-        self._assistant_service.set_llm(new_llm)
+        try:
+            choice = self._provider_setup.open_dialog(
+                current_provider=self._current_settings.llm_provider,
+                parent=self._window,
+            )
+            if choice is None:
+                return
+            new_settings = self._provider_setup.apply_choice(self._env_settings, choice)
+            self._current_settings = new_settings
+            new_llm = LLMFactory(new_settings, self._strings).create()
+            self._assistant_service.set_llm(new_llm)
+            LOGGER.info(
+                "llm_runtime_swap",
+                extra={
+                    "event_data": {
+                        "provider": new_settings.llm_provider.value,
+                        "class": type(new_llm).__name__,
+                        "is_fallback": new_llm.is_fallback,
+                    }
+                },
+            )
+        except Exception as exc:
+            # Qt swallows exceptions from signal handlers by default, which
+            # hides provider setup failures. Log loudly instead.
+            LOGGER.exception(
+                "llm_runtime_swap_failed",
+                extra={"event_data": {"error": str(exc)}},
+            )
 
     def _on_crash_occurred(self, report: CrashReport) -> None:
         dialog = CrashDialog(report=report, issue_reporter=self._issue_reporter, parent=self._window)

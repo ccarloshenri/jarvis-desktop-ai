@@ -35,7 +35,7 @@ def test_llm_factory_selects_gpt(monkeypatch: pytest.MonkeyPatch) -> None:
     factory = _factory(LLMProvider.GPT)
 
     class FakeGPT:
-        pass
+        is_fallback = False
 
     monkeypatch.setattr(factory, "_create_gpt", lambda: FakeGPT())
     assert isinstance(factory.create(), FakeGPT)
@@ -45,7 +45,7 @@ def test_llm_factory_selects_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
     factory = _factory(LLMProvider.GEMINI)
 
     class FakeGemini:
-        pass
+        is_fallback = False
 
     monkeypatch.setattr(factory, "_create_gemini", lambda: FakeGemini())
     assert isinstance(factory.create(), FakeGemini)
@@ -55,7 +55,7 @@ def test_llm_factory_selects_claude(monkeypatch: pytest.MonkeyPatch) -> None:
     factory = _factory(LLMProvider.CLAUDE)
 
     class FakeClaude:
-        pass
+        is_fallback = False
 
     monkeypatch.setattr(factory, "_create_claude", lambda: FakeClaude())
     assert isinstance(factory.create(), FakeClaude)
