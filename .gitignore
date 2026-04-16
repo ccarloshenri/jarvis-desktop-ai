@@ -32,6 +32,10 @@ logs/
 /tools/
 /models/
 
+# Internal docs (release notes, social posts — not part of the product)
+SOCIAL_POST*.md
+RELEASE_NOTES*.md
+
 # Agent tooling / personal workspace
 .claude/
 .codex/
