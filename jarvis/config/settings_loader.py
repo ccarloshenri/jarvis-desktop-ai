@@ -30,6 +30,4 @@ class SettingsLoader:
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
-            ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434").strip() or "http://localhost:11434",
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b").strip() or "qwen2.5:3b",
         )

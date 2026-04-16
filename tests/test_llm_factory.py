@@ -17,8 +17,6 @@ def build_settings(provider: LLMProvider, openai_key: str = "openai-key") -> App
         openai_api_key=openai_key,
         gemini_api_key="gemini-key",
         anthropic_api_key="anthropic-key",
-        ollama_host="http://localhost:11434",
-        ollama_model="qwen2.5:3b",
     )
 
 
@@ -64,10 +62,3 @@ def test_llm_factory_selects_claude(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_llm_factory_falls_back_when_key_missing() -> None:
     llm = _factory(LLMProvider.GPT, openai_key="").create()
     assert isinstance(llm, FallbackLLM)
-
-
-def test_llm_factory_selects_ollama() -> None:
-    from jarvis.implementations.llm.ollama_llm import OllamaLLM
-
-    llm = _factory(LLMProvider.OLLAMA).create()
-    assert isinstance(llm, OllamaLLM)

@@ -8,8 +8,12 @@ from PyInstaller.utils.hooks import collect_submodules
 project_root = Path.cwd()
 
 datas = [
-    (str(project_root / "assets"), "assets"),
-    (str(project_root / "speechs"), "speechs"),
+    (src, dest)
+    for src, dest in [
+        (str(project_root / "assets"), "assets"),
+        (str(project_root / "speechs"), "speechs"),
+    ]
+    if Path(src).exists()
 ]
 
 hiddenimports = []
