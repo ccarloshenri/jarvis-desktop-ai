@@ -42,6 +42,49 @@ class SpotifyController:
     def __init__(self, auth: SpotifyPkceAuth | None = None) -> None:
         self._auth = auth or SpotifyPkceAuth()
 
+    def search(self, query: str, limit: int = 5) -> list[dict]:
+        """Return top Spotify search results for `query` without playing.
+
+        Used by the entity resolver to measure how well the spoken target
+        matched real Spotify content. Distinct from search_and_play so the
+        resolver never triggers playback as a side effect of validating.
+
+        Returns an empty list on any error (auth unavailable, network,
+        HTTP, empty results) — the resolver treats that as "no evidence".
+        """
+        query = query.strip()
+        if not query:
+            return []
+        try:
+            token = self._auth.get_access_token()
+        except SpotifyAuthError as exc:
+            LOGGER.debug(
+                "spotify_search_auth_unavailable",
+                extra={"event_data": {"error": str(exc)}},
+            )
+            return []
+        try:
+            response = requests.get(
+                f"{_API_BASE}/search",
+                params={"q": query, "type": "track", "limit": max(1, min(limit, 10))},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5,
+            )
+        except requests.RequestException as exc:
+            LOGGER.debug("spotify_search_failed", extra={"event_data": {"error": str(exc)}})
+            return []
+        if response.status_code != 200:
+            return []
+        items = response.json().get("tracks", {}).get("items", []) or []
+        return [
+            {
+                "uri": item.get("uri", ""),
+                "name": item.get("name", ""),
+                "artist": ", ".join(a.get("name", "") for a in item.get("artists", [])),
+            }
+            for item in items
+        ]
+
     def search_and_play(self, query: str) -> bool:
         query = query.strip()
         if not query:

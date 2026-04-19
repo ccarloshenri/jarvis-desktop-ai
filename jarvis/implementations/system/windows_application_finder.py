@@ -40,6 +40,12 @@ class WindowsApplicationFinder(IApplicationFinder):
             extra={"event_data": {"prefetch_ms": int((time.perf_counter() - t0) * 1000)}},
         )
 
+    def candidates(self) -> list[ApplicationCandidate]:
+        """Public accessor used by entity resolvers to score the full
+        candidate set against a spoken target. Triggers a scan on cache
+        miss, but hits the cache on subsequent calls within a session."""
+        return list(self._get_or_scan_candidates())
+
     def find(self, name: str) -> str | None:
         t0 = time.perf_counter()
         normalized_name = self._alias_resolver.normalize(name)

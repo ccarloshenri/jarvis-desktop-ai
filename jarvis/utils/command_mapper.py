@@ -50,4 +50,5 @@ _TARGETLESS_ACTIONS = {
     ActionType.BROWSER_RELOAD,
     ActionType.BROWSER_OPEN_EMAIL,
     ActionType.BROWSER_CHECK_UNREAD,
+    ActionType.SHOW_OFF,
 }

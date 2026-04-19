@@ -44,3 +44,5 @@ class ActionType(Enum):
     BROWSER_CHECK_UNREAD = "browser_check_unread"
     BROWSER_SEARCH_EMAIL_FROM = "browser_search_email_from"
     BROWSER_SEARCH_EMAIL_SUBJECT = "browser_search_email_subject"
+
+    SHOW_OFF = "show_off"

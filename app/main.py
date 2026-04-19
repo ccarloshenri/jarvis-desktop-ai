@@ -3,6 +3,25 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Import native-DLL-heavy optional deps BEFORE Qt.
+# PySide6 ships its own copies of common runtime DLLs (OpenSSL, ICU, MSVC
+# runtime). Loading Qt first can leave these deps unable to resolve their
+# own DLLs on Windows:
+# - faster-whisper (via ctranslate2) fails silently during WhisperModel
+#   construction.
+# - onnxruntime (used by Silero VAD) raises "DLL initialization routine
+#   failed" when any inference session is opened.
+# Forcing both to import first locks in deterministic DLL resolution.
+# Guarded because each is optional.
+try:  # noqa: SIM105
+    import faster_whisper  # noqa: F401
+except ImportError:
+    pass
+try:  # noqa: SIM105
+    import onnxruntime  # noqa: F401
+except ImportError:
+    pass
+
 from PySide6.QtWidgets import QApplication
 
 from jarvis.config.logging_configurator import LoggingConfigurator

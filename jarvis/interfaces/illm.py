@@ -9,18 +9,13 @@ from jarvis.models.llm_decision import LLMDecision
 
 class ILLM(ABC):
     @abstractmethod
-    def interpret(self, text: str) -> str:
-        """Interpret raw text into a natural-language response."""
-
     def decide(self, text: str, history: Sequence[ChatTurn] | None = None) -> LLMDecision:
-        """Return a structured decision. Default wraps interpret() as a chat reply.
+        """Return a structured decision from the user's utterance.
 
-        Implementations that support multi-turn context should consume `history`
-        (oldest first); stateless implementations are free to ignore it.
+        Implementations are free to ignore `history` but should consume
+        it when multi-turn context improves disambiguation.
         """
-        return LLMDecision(type="chat", spoken_response=self.interpret(text).strip())
 
-    @property
-    def is_fallback(self) -> bool:
-        """True if this LLM is the offline keyword-based fallback (no real reasoning)."""
-        return False
+    def interpret(self, text: str) -> str:
+        """Convenience: return just the spoken response text."""
+        return self.decide(text).spoken_response

@@ -14,6 +14,7 @@ from jarvis.interfaces.iapplication_finder import IApplicationFinder
 from jarvis.interfaces.ispotify_controller import ISpotifyController
 from jarvis.models.action_result import ActionResult
 from jarvis.models.command import Command
+from jarvis.services.show_off_service import ShowOffService
 
 
 class SystemActionExecutor(IActionExecutor):
@@ -22,10 +23,25 @@ class SystemActionExecutor(IActionExecutor):
         application_finder: IApplicationFinder,
         spotify_controller: ISpotifyController | None = None,
         apps: list[BaseApp] | None = None,
+        show_off_service: ShowOffService | None = None,
     ) -> None:
         self._application_finder = application_finder
         self._spotify_controller = spotify_controller
         self._apps: list[BaseApp] = list(apps or [])
+        self._show_off_service = show_off_service or ShowOffService(
+            spotify_controller=spotify_controller
+        )
+        # If the executor was handed both a show service and a spotify
+        # controller, make sure the show can reach the controller —
+        # covers the case where the caller wired them up independently.
+        if spotify_controller is not None:
+            self._show_off_service.set_spotify_controller(spotify_controller)
+
+    def set_spotify_controller(self, controller: ISpotifyController) -> None:
+        self._spotify_controller = controller
+        # Propagate the new controller into the show service so the
+        # next `jarvis, show off` uses it for the soundtrack.
+        self._show_off_service.set_spotify_controller(controller)
 
     def execute(self, command: Command) -> ActionResult:
         for app in self._apps:
@@ -39,7 +55,17 @@ class SystemActionExecutor(IActionExecutor):
             return self._play_spotify(command)
         if command.action == ActionType.SEARCH_WEB:
             return self._search_web(command)
+        if command.action == ActionType.SHOW_OFF:
+            return self._show_off(command)
         raise ValueError(f"Unsupported action '{command.action.value}'.")
+
+    def _show_off(self, command: Command) -> ActionResult:
+        started = self._show_off_service.run()
+        if started:
+            return ActionResult(True, "Show started.", command.action, command.target)
+        return ActionResult(
+            False, "Show already running or unsupported platform.", command.action, command.target
+        )
 
     def _play_spotify(self, command: Command) -> ActionResult:
         query = command.target.strip()

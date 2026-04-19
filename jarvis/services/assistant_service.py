@@ -1,22 +1,31 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
-import threading
-import time
 
 from jarvis.config.strings import Strings
 from jarvis.enums.action_type import ActionType
-from jarvis.interfaces.icommand_interpreter import ICommandInterpreter
 from jarvis.interfaces.iaction_executor import IActionExecutor
 from jarvis.interfaces.illm import ILLM
 from jarvis.interfaces.itext_to_speech import ITextToSpeech
 from jarvis.models.command import Command
 from jarvis.models.interaction_result import InteractionResult
 from jarvis.models.llm_decision import LLMDecision
+from jarvis.models.pending_confirmation import PendingConfirmation
+from jarvis.services.context_aware_correction_service import (
+    ContextAwareCorrectionService,
+    CorrectionOutcome,
+)
 from jarvis.services.conversation_memory import ConversationMemory
-from jarvis.services.local_intent_handler import LocalIntentHandler
 from jarvis.utils.command_mapper import CommandMapper
+from jarvis.utils.llm_response_parser import (
+    ActionReady,
+    ParseComplete,
+    SpokenChunk,
+)
+from jarvis.utils.performance import Category, log, timed
+from jarvis.utils.yes_no_classifier import YesNoAnswer, classify as classify_yes_no
 
 
 _ACK_KEYS = {
@@ -58,50 +67,64 @@ _ACK_KEYS = {
     ActionType.BROWSER_CHECK_UNREAD: "ack_browser_check_unread",
     ActionType.BROWSER_SEARCH_EMAIL_FROM: "ack_browser_search_email_from",
     ActionType.BROWSER_SEARCH_EMAIL_SUBJECT: "ack_browser_search_email_subject",
+    ActionType.SHOW_OFF: "ack_show_off",
 }
 
 _DISCORD_LABEL_KEYS = ("target_name", "channel_name", "server_name", "site", "query", "sender", "subject", "url")
 
-# Wake word: the assistant only reacts when it hears "jarvis" in the utterance.
-# We accept a small whitelist of common STT mishears so phrases like
-# "charges manda um oi..." still land. Adding a new alternative is intentional:
-# it must be rare enough as a real word that false-positives stay low.
+# Wake-word gate: we filter *before* hitting the LLM. Routing every random
+# chatter in the room through a local model would waste CPU/GPU cycles and
+# tighten the wake-word intent of the product. The alternatives cover the
+# most common STT mishears of "Jarvis" — adding more must stay rare enough
+# as real words to keep false positives low.
 _WAKE_WORD_ALTS = (
     r"jarvis|jards|jardins|jarbas|jarves|jarvez|jarviz|jarviso|jarbis|"
     r"charges|chavis|charbs|jervis|jarveis"
 )
 _WAKE_WORD_RE = re.compile(rf"\b({_WAKE_WORD_ALTS})\b", re.IGNORECASE)
-# Only strips the FIRST occurrence so embedded mentions
-# ("... e fala que foi o Jarvis que mandou") stay intact.
 _WAKE_WORD_STRIP_RE = re.compile(rf"\b({_WAKE_WORD_ALTS})\b[\s,.!?:;]*", re.IGNORECASE)
 
 LOGGER = logging.getLogger(__name__)
 
 
 class AssistantService:
+    """Single pipeline: wake-word gate -> LLM -> execute-or-speak.
+
+    Every interpretation decision lives in the LLM (LocalLLM over LM Studio).
+    No rule-based shortcut layer, no keyword fallback — if the LLM fails,
+    we speak a generic error rather than attempt a hand-rolled intent match.
+    """
+
     def __init__(
         self,
         strings: Strings,
-        local_intent_handler: LocalIntentHandler,
-        command_interpreter: ICommandInterpreter,
         action_executor: IActionExecutor,
         llm: ILLM,
         text_to_speech: ITextToSpeech,
         command_mapper: CommandMapper,
         conversation_memory: ConversationMemory | None = None,
+        correction_service: ContextAwareCorrectionService | None = None,
+        llm_streaming: bool = True,
     ) -> None:
         self._strings = strings
-        self._local_intent_handler = local_intent_handler
-        self._command_interpreter = command_interpreter
         self._action_executor = action_executor
         self._llm = llm
         self._text_to_speech = text_to_speech
         self._command_mapper = command_mapper
         self._memory = conversation_memory or ConversationMemory()
-        self._speech_thread: threading.Thread | None = None
+        self._correction_service = correction_service
+        # Holds a medium-confidence correction between turns. When set, the
+        # next utterance is interpreted as a yes/no answer to the question
+        # we spoke; on UNKNOWN we drop it and fall through to the usual
+        # wake-word + LLM flow. Optional (None) means no pending turn.
+        self._pending_confirmation: PendingConfirmation | None = None
+        # Stream only when the LLM impl supports it. Hard-check at init so
+        # we fall back transparently for LLM stubs used in tests.
+        self._llm_streaming = llm_streaming and hasattr(llm, "decide_streaming")
 
-    def set_llm(self, llm: ILLM) -> None:
-        self._llm = llm
+    def set_spotify_controller(self, controller: object) -> None:
+        if hasattr(self._action_executor, "set_spotify_controller"):
+            self._action_executor.set_spotify_controller(controller)  # type: ignore[attr-defined]
 
     def handle(self, text: str) -> str:
         return self.process(text).spoken_response
@@ -110,14 +133,20 @@ class AssistantService:
         cleaned_text = text.strip()
         if not cleaned_text:
             response = self._strings.get("empty_transcript")
-            self._speak(response)
+            self._text_to_speech.speak(response)
             return InteractionResult(transcript=text, command=None, action_result=None, spoken_response=response)
 
+        # If we asked a yes/no question last turn, try to resolve it here
+        # *before* the wake-word gate. Users rarely re-invoke "Jarvis" just
+        # to say "sim" — making confirmation require wake word would make
+        # the UX feel hostile.
+        if self._pending_confirmation is not None:
+            handled = self._try_handle_confirmation(cleaned_text)
+            if handled is not None:
+                return handled
+
         if not _WAKE_WORD_RE.search(self._strip_accents(cleaned_text)):
-            LOGGER.info(
-                "wake_word_missing",
-                extra={"event_data": {"transcript": cleaned_text[:120]}},
-            )
+            log(Category.SYSTEM, "wake word missing — ignoring", transcript=cleaned_text[:120])
             self._log_response("wake_gate", "")
             return InteractionResult(
                 transcript=cleaned_text,
@@ -129,120 +158,215 @@ class AssistantService:
         cleaned_text = self._strip_wake_word(cleaned_text)
         if not cleaned_text:
             response = self._strings.get("greeting")
-            self._speak(response)
+            self._text_to_speech.speak(response)
             self._log_response("bare_wake_word", response)
             return InteractionResult(transcript=text, command=None, action_result=None, spoken_response=response)
 
-        if self._llm.is_fallback:
-            local_response = self._local_intent_handler.handle(cleaned_text)
-            if local_response is not None:
-                self._speak(local_response)
-                self._log_response("fallback_local", local_response)
-                return InteractionResult(transcript=cleaned_text, command=None, action_result=None, spoken_response=local_response)
-
         self._memory.add_user(cleaned_text)
 
-        command_payload = self._command_interpreter.interpret(cleaned_text)
-        if command_payload is not None:
-            command = self._command_mapper.from_payload(command_payload)
-            ack = self._build_ack(command)
-            # Speak the ack in parallel with the action execution: Piper takes
-            # ~2-3s and Discord/Spotify automation takes ~1-2s, so running them
-            # sequentially doubles the perceived latency. TTS uses the audio
-            # output; automation uses keyboard focus — they don't compete.
-            self._speak_async(ack)
-            t2 = time.perf_counter()
-            action_result = self._action_executor.execute(command)
-            LOGGER.info(
-                "action_executed",
-                extra={
-                    "event_data": {
-                        "execute_ms": int((time.perf_counter() - t2) * 1000),
-                        "success": action_result.success,
-                        "action": action_result.action.value,
-                        "target": action_result.target,
-                        "message": action_result.message,
-                    }
-                },
-            )
-            if action_result.success:
-                response = ack
-            else:
-                response = self._strings.get("command_not_found")
-                self._speak(response)
-            self._memory.add_assistant(response)
-            self._log_response(
-                "rule_based",
-                response,
-                action=command.action.value,
-                success=action_result.success,
-            )
-            return InteractionResult(
-                transcript=cleaned_text,
-                command=command,
-                action_result=action_result,
-                spoken_response=response,
-            )
-
-        t3 = time.perf_counter()
-        decision = self._llm.decide(cleaned_text, history=self._memory.snapshot()[:-1])
-        LOGGER.info(
-            "llm_done",
-            extra={
-                "event_data": {
-                    "llm_ms": int((time.perf_counter() - t3) * 1000),
-                    "type": decision.type,
-                    "is_fallback": self._llm.is_fallback,
-                    "action": decision.action,
-                    "spoken_preview": (decision.spoken_response or "")[:200],
-                }
-            },
-        )
+        decision, already_spoken = self._decide(cleaned_text)
 
         if decision.is_action:
             command = self._command_from_decision(decision)
             if command is not None:
-                ack = decision.spoken_response or self._build_ack(command)
-                self._speak_async(ack)
-                t4 = time.perf_counter()
-                action_result = self._action_executor.execute(command)
-                LOGGER.info(
-                    "action_executed",
-                    extra={
-                        "event_data": {
-                            "source": "llm",
-                            "execute_ms": int((time.perf_counter() - t4) * 1000),
-                            "success": action_result.success,
-                            "action": action_result.action.value,
-                            "target": action_result.target,
-                            "message": action_result.message,
-                        }
-                    },
-                )
-                if action_result.success:
-                    response = ack
-                else:
-                    response = self._strings.get("command_not_found")
-                    self._speak(response)
-                self._memory.add_assistant(response)
-                self._log_response(
-                    "llm_action",
-                    response,
-                    action=command.action.value,
-                    success=action_result.success,
-                )
-                return InteractionResult(
-                    transcript=cleaned_text,
-                    command=command,
-                    action_result=action_result,
-                    spoken_response=response,
+                return self._handle_action_command(
+                    command, decision.spoken_response, cleaned_text
                 )
 
         response = decision.spoken_response.strip() or self._strings.get("no_response")
-        self._speak(response)
+        if not already_spoken:
+            self._text_to_speech.speak(response)
         self._memory.add_assistant(response)
-        self._log_response("llm_chat", response, is_fallback=self._llm.is_fallback)
+        self._log_response("llm_chat", response)
         return InteractionResult(transcript=cleaned_text, command=None, action_result=None, spoken_response=response)
+
+    def _decide(self, cleaned_text: str) -> tuple[LLMDecision, bool]:
+        """Run the LLM and return (decision, already_spoken).
+
+        `already_spoken` is True when streaming has already pushed the
+        full spoken_response through the TTS pipeline; the caller must
+        NOT speak it again (double audio). Streaming is only actually
+        used for chat decisions — action acknowledgements are short and
+        typically cache-hit, and we need them gated by the correction
+        service before speaking, so streaming them is counterproductive.
+        """
+        history = self._memory.snapshot()[:-1]
+        if not self._llm_streaming:
+            with timed(Category.LLM, "decide") as m:
+                decision = self._llm.decide(cleaned_text, history=history)
+                m["type"] = decision.type
+                m["action"] = decision.action
+                m["spoken_preview"] = (decision.spoken_response or "")[:120]
+            return decision, False
+
+        buffered_spoken: list[str] = []
+        streamed_to_tts = False
+        action_detected = False
+        decision: LLMDecision | None = None
+
+        with timed(Category.LLM, "decide_streaming") as m:
+            try:
+                for event in self._llm.decide_streaming(  # type: ignore[attr-defined]
+                    cleaned_text, history=history
+                ):
+                    if isinstance(event, ActionReady):
+                        action_detected = True
+                    elif isinstance(event, SpokenChunk):
+                        if action_detected:
+                            # Action flow: buffer the spoken chunks — the
+                            # correction service may change the ack we
+                            # actually speak, so committing them to the
+                            # TTS pipeline early would be wrong.
+                            buffered_spoken.append(event.text)
+                        else:
+                            self._text_to_speech.speak_stream_chunk(event.text)
+                            streamed_to_tts = True
+                    elif isinstance(event, ParseComplete):
+                        decision = event.decision
+            finally:
+                if streamed_to_tts:
+                    self._text_to_speech.speak_stream_end()
+            m["type"] = (decision.type if decision else "unknown")
+            m["action"] = decision.action if decision else None
+            m["streamed"] = streamed_to_tts
+
+        if decision is None:
+            # Parser couldn't salvage a decision — same fallback as the
+            # non-streaming path, routed through speak() since nothing
+            # was streamed yet.
+            decision = LLMDecision(
+                type="chat",
+                spoken_response=self._strings.get("no_response"),
+            )
+            return decision, streamed_to_tts
+
+        # For action decisions, the buffered chunks reconstruct the full
+        # spoken_response that the caller will pass through the correction
+        # service. parse_decision already set decision.spoken_response
+        # from the completed JSON, so buffered_spoken is a redundant
+        # safety net — use it only if the parser somehow lost the field.
+        if action_detected and not decision.spoken_response and buffered_spoken:
+            decision = dataclasses.replace(
+                decision, spoken_response=" ".join(buffered_spoken).strip()
+            )
+        return decision, streamed_to_tts
+
+    def _handle_action_command(
+        self, command: Command, llm_spoken: str, transcript: str
+    ) -> InteractionResult:
+        """Run context-aware correction, handle the three outcomes."""
+        if self._correction_service is not None:
+            result = self._correction_service.correct(command)
+            if (
+                result.outcome == CorrectionOutcome.NEEDS_CONFIRMATION
+                and result.candidate_command is not None
+                and result.resolution is not None
+            ):
+                spoken_candidate = result.resolution.spoken
+                question = self._strings.get("confirm_candidate", candidate=spoken_candidate)
+                self._text_to_speech.speak(question)
+                self._pending_confirmation = PendingConfirmation(
+                    candidate_command=result.candidate_command,
+                    spoken_candidate=spoken_candidate,
+                    original_target=result.resolution.original,
+                )
+                self._memory.add_assistant(question)
+                self._log_response("correction_confirm", question, candidate=spoken_candidate)
+                return InteractionResult(
+                    transcript=transcript,
+                    command=None,
+                    action_result=None,
+                    spoken_response=question,
+                )
+            command = result.command
+        return self._execute_command(command, llm_spoken, transcript)
+
+    def _execute_command(
+        self, command: Command, llm_spoken: str, transcript: str
+    ) -> InteractionResult:
+        # Always use the localised ack phrase for actions — the LLM's
+        # `spoken_response` was useful when the prompt and TTS were both
+        # pt-BR, but with Groq TTS (English only) that Portuguese ack
+        # gets spoken by an English voice and sounds absurd. The Strings
+        # catalogue carries a proper per-language template with target
+        # interpolation ("Opening Spotify, sir." / "Abrindo Spotify,
+        # senhor."), so we just ignore llm_spoken here.
+        del llm_spoken
+        ack = self._build_ack(command)
+        self._text_to_speech.speak(ack)
+        log(
+            Category.EXECUTOR,
+            f"executing action: {command.action.value}",
+            target=command.target,
+        )
+        with timed(Category.EXECUTOR, "execute", action=command.action.value) as m:
+            action_result = self._action_executor.execute(command)
+            m["success"] = action_result.success
+            m["target"] = action_result.target
+        if action_result.success:
+            response = ack
+        else:
+            response = self._strings.get("command_not_found")
+            self._text_to_speech.speak(response)
+        self._memory.add_assistant(response)
+        self._log_response(
+            "llm_action",
+            response,
+            action=command.action.value,
+            success=action_result.success,
+        )
+        return InteractionResult(
+            transcript=transcript,
+            command=command,
+            action_result=action_result,
+            spoken_response=response,
+        )
+
+    def _try_handle_confirmation(self, text: str) -> InteractionResult | None:
+        """Consume the pending confirmation if the utterance reads as yes/no.
+
+        Returns an InteractionResult when the confirmation is resolved
+        (either direction); returns None if the utterance isn't a yes/no,
+        in which case the caller should drop the pending state and run
+        the utterance through the normal pipeline.
+        """
+        pending = self._pending_confirmation
+        if pending is None:
+            return None
+        # Strip the wake word defensively — users sometimes prepend
+        # "Jarvis, sim" even when it's not required.
+        stripped = self._strip_wake_word(text).strip() or text
+        answer = classify_yes_no(stripped)
+        log(
+            Category.SYSTEM,
+            f"confirmation reply: {stripped!r} -> {answer.value}",
+            candidate=pending.spoken_candidate,
+        )
+        if answer == YesNoAnswer.YES:
+            self._pending_confirmation = None
+            return self._execute_command(
+                pending.candidate_command,
+                self._build_ack(pending.candidate_command),
+                stripped,
+            )
+        if answer == YesNoAnswer.NO:
+            self._pending_confirmation = None
+            response = self._strings.get("confirmation_cancelled")
+            self._text_to_speech.speak(response)
+            self._memory.add_assistant(response)
+            self._log_response("confirmation_cancelled", response)
+            return InteractionResult(
+                transcript=stripped,
+                command=None,
+                action_result=None,
+                spoken_response=response,
+            )
+        # UNKNOWN — drop the pending and let the caller reprocess as a
+        # brand-new command. No cancellation message: if the user said
+        # something unrelated, we don't want to interrupt them.
+        self._pending_confirmation = None
+        log(Category.SYSTEM, "confirmation dropped (unknown reply)")
+        return None
 
     def _command_from_decision(self, decision: LLMDecision) -> Command | None:
         if not decision.action:
@@ -285,61 +409,7 @@ class AssistantService:
                 return value.strip()
         return ""
 
-    def _speak(self, text: str) -> None:
-        """Synchronous speak. Waits for any in-flight async speech first."""
-        self._wait_for_speech()
-        t = time.perf_counter()
-        self._text_to_speech.speak(text)
-        LOGGER.info(
-            "tts_spoken",
-            extra={
-                "event_data": {
-                    "tts_ms": int((time.perf_counter() - t) * 1000),
-                    "chars": len(text),
-                    "mode": "sync",
-                }
-            },
-        )
-
-    def _speak_async(self, text: str) -> None:
-        """Fire-and-forget speak. Used to parallelize the ack with action execution.
-
-        Ensures we never speak over ourselves by joining the previous thread
-        before starting a new one.
-        """
-        self._wait_for_speech()
-        t = time.perf_counter()
-
-        def _run() -> None:
-            try:
-                self._text_to_speech.speak(text)
-            finally:
-                LOGGER.info(
-                    "tts_spoken",
-                    extra={
-                        "event_data": {
-                            "tts_ms": int((time.perf_counter() - t) * 1000),
-                            "chars": len(text),
-                            "mode": "async",
-                        }
-                    },
-                )
-
-        self._speech_thread = threading.Thread(target=_run, daemon=True)
-        self._speech_thread.start()
-
-    def _wait_for_speech(self) -> None:
-        thread = self._speech_thread
-        if thread is not None and thread.is_alive():
-            thread.join()
-        self._speech_thread = None
-
     def _log_response(self, source: str, response: str, **extra: object) -> None:
-        """Log what Jarvis is saying back so the assistant's behavior is debuggable.
-
-        ``source`` is the path that produced it: 'wake_gate', 'greeting',
-        'fallback_local', 'rule_based', 'llm_action', 'llm_chat', etc.
-        """
         payload: dict[str, object] = {"source": source, "response": response[:300]}
         payload.update(extra)
         LOGGER.info("jarvis_response", extra={"event_data": payload})
