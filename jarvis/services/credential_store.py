@@ -6,9 +6,10 @@ from typing import Protocol
 LOGGER = logging.getLogger(__name__)
 
 SERVICE_NAME = "jarvis-desktop-ai"
-OPENAI_KEY_USERNAME = "openai_api_key"
-GEMINI_KEY_USERNAME = "gemini_api_key"
-ANTHROPIC_KEY_USERNAME = "anthropic_api_key"
+SPOTIFY_CLIENT_ID_USERNAME = "spotify_client_id"
+GROQ_API_KEY_USERNAME = "groq_api_key"
+ELEVENLABS_API_KEY_USERNAME = "elevenlabs_api_key"
+ELEVENLABS_VOICE_ID_USERNAME = "elevenlabs_voice_id"
 
 
 class KeyringBackend(Protocol):
@@ -18,6 +19,9 @@ class KeyringBackend(Protocol):
 
 
 class CredentialStore:
+    """Minimal keyring wrapper. Used only for the Spotify client_id so the
+    user can set it via the settings dialog without editing .env by hand."""
+
     def __init__(self, backend: KeyringBackend | None = None, service: str = SERVICE_NAME) -> None:
         self._service = service
         self._backend = backend if backend is not None else self._load_default_backend()
