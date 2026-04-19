@@ -12,13 +12,12 @@ from jarvis.ui.orb_animation_state import OrbAnimationState
 class JarvisOrb(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        # Fixed size — the orb paints a radial gradient that fills its
-        # rect, so letting it expand freely would make it eat the state
-        # strip below. 280 is the sweet spot for a 1180×980 window: big
-        # enough to read as the centrepiece, small enough to leave a
-        # clear gap between the glow and the LISTENING label that sits
-        # outside the orb frame.
-        self.setFixedSize(280, 280)
+        # Fixed widget rect. The orb body only fills the central ~70%
+        # of this square; the remaining margin is there so the halo
+        # that pulses on SPEAKING has room to render. Shrinking the
+        # widget to the visual orb size made the halo look chopped
+        # against the state-strip / banner cards beneath it.
+        self.setFixedSize(340, 340)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)

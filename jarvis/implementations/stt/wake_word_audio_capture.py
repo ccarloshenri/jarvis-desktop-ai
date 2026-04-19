@@ -75,15 +75,16 @@ _RMS_SILENCE_END_SECONDS = 0.8
 _RMS_MIN_COMMAND_SECONDS = 1.5
 _RMS_SILENCE_THRESHOLD = 250.0
 
-# Silero-path tuning. 1.0s silence was still clipping long English
-# commands with natural thinking pauses ("search… the latest… Nolan
-# movie"). 1.5s is comfortable for deliberate speech — inter-word
-# gaps in careful dictation can hit 800-1200ms — while still closing
-# short commands (~1-2s speech) within 2s total. 1.5s minimum also
-# protects the opening beat when the user takes a breath after the
-# wake word before starting the actual command.
-_VAD_SILENCE_END_SECONDS = 1.5
-_VAD_MIN_COMMAND_SECONDS = 1.5
+# Silero-path tuning. Field tuning has walked these up twice now —
+# 0.35s → 0.6s → 1.0s → 1.5s → 2.0s — because in natural conversation
+# people pause mid-clause longer than a default VAD expects. 2.0s of
+# silence is the new floor: any shorter still clipped "play Lana Del
+# Rey… on the speakers in the kitchen" style commands. 1.5s minimum
+# keeps the initial breath-after-wake protected. Both can be
+# overridden via JARVIS_VAD_SILENCE_END / JARVIS_VAD_MIN_COMMAND
+# so the user can stretch them further without editing source.
+_VAD_SILENCE_END_SECONDS_DEFAULT = 2.0
+_VAD_MIN_COMMAND_SECONDS_DEFAULT = 1.5
 
 # Silero operates on 512-sample windows at 16kHz (32ms). We read in
 # _CHUNK_SAMPLES-sized bursts from PyAudio (matches openWakeWord),
@@ -109,6 +110,8 @@ class WakeWordAudioCapture(IAudioCapture):
         dump_dir: Path | None = None,
         level_callback: "object | None" = None,
         wake_callback: "object | None" = None,
+        vad_silence_end_seconds: float | None = None,
+        vad_min_command_seconds: float | None = None,
     ) -> None:
         self._detector = detector or WakeWordDetector()
         self._max_command_seconds = max_command_seconds
@@ -117,8 +120,16 @@ class WakeWordAudioCapture(IAudioCapture):
         # tuned conservatively enough not to clip.
         self._vad = vad
         if vad is not None:
-            self._silence_end_seconds = _VAD_SILENCE_END_SECONDS
-            self._min_command_seconds = _VAD_MIN_COMMAND_SECONDS
+            self._silence_end_seconds = (
+                vad_silence_end_seconds
+                if vad_silence_end_seconds is not None
+                else _VAD_SILENCE_END_SECONDS_DEFAULT
+            )
+            self._min_command_seconds = (
+                vad_min_command_seconds
+                if vad_min_command_seconds is not None
+                else _VAD_MIN_COMMAND_SECONDS_DEFAULT
+            )
         else:
             self._silence_end_seconds = _RMS_SILENCE_END_SECONDS
             self._min_command_seconds = _RMS_MIN_COMMAND_SECONDS

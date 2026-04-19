@@ -42,8 +42,16 @@ class AppSettings:
     elevenlabs_voice_id: str = "onwK4e9ZLuTAKqWW03F9"  # Daniel, British deep male
     elevenlabs_model: str = "eleven_multilingual_v2"
     vad_backend: str = "silero"  # "silero" or "rms"
-    # Lowered from 0.5 — the default was flagging unvoiced consonants
-    # (/p/, /t/, /k/, /s/) as silence mid-sentence, which combined
-    # with short silence windows cut off long commands. 0.35 keeps
-    # the VAD firmly pegged to "speech" across natural phonetics.
-    vad_threshold: float = 0.35
+    # Walked down from 0.5 → 0.35 → 0.22 across field-tuning rounds.
+    # Each step made the VAD more tolerant of soft/unvoiced speech so
+    # it stops treating natural quiet moments as "the user is done".
+    # 0.22 leaves a comfortable headroom above actual silence while
+    # keeping breath pauses, /p/, /t/, /k/, /s/ and thinking-aloud
+    # murmurs all counted as "still talking".
+    vad_threshold: float = 0.22
+    # End-of-speech and minimum-command windows (seconds). None =
+    # use the in-module defaults (2.0s end, 1.5s min). Override via
+    # JARVIS_VAD_SILENCE_END / JARVIS_VAD_MIN_COMMAND if speech is
+    # still being clipped on slow, deliberate phrasing.
+    vad_silence_end_seconds: float | None = None
+    vad_min_command_seconds: float | None = None

@@ -84,7 +84,7 @@ class MainWindow(QMainWindow):
         self._stats = stats
         self._settings = settings
         self.setWindowTitle(strings.get("window_title"))
-        self.setMinimumSize(1180, 980)
+        self.setMinimumSize(1320, 1060)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._drag_origin: QPoint | None = None
@@ -487,25 +487,22 @@ class MainWindow(QMainWindow):
         big_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(big_title)
 
-        # Orb container with FIXED height = orb size + symmetrical
-        # 24px padding above and below. Any earlier design relied on
-        # stretch math between flexible orb space and the rest of the
-        # layout, which let Qt compress the container on smaller
-        # windows — the orb's radial glow then bled into the state
-        # strip ("LISTENING" landing on top of the ball). A fixed
-        # 328px container walls the glow off from anything below it.
+        # Orb container with generous fixed height = orb rect + 80px
+        # symmetrical padding. Padding has to be bigger than the
+        # orb's halo-on-SPEAKING radius or the pulse gets clipped
+        # against the state strip below. 80 covers the widest halo
+        # the current orb renders.
         orb_holder = QWidget()
-        orb_holder.setFixedHeight(self._orb.height() + 48)
+        orb_holder.setFixedHeight(self._orb.height() + 80)
         orb_layout = QVBoxLayout(orb_holder)
-        orb_layout.setContentsMargins(0, 24, 0, 24)
+        orb_layout.setContentsMargins(0, 40, 0, 40)
         orb_layout.addWidget(self._orb, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(orb_holder)
 
-        # 24px spacer BETWEEN the orb box and the state strip. This is
-        # the gap the user sees — without it, the LISTENING label
-        # visually touches the orb even when they're technically
-        # different widgets.
-        layout.addSpacing(24)
+        # 32px explicit spacer between the orb container and the
+        # state strip. Stops the LISTENING label from ever sitting
+        # under the orb's halo even at maximum pulse amplitude.
+        layout.addSpacing(32)
 
         # State strip — dot + label, lit based on pipeline state.
         state_row = QHBoxLayout()

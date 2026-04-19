@@ -321,6 +321,8 @@ class ApplicationFactory:
             dump_dir=dump_dir,
             level_callback=event_bus.emit_mic_level,
             wake_callback=_on_wake,
+            vad_silence_end_seconds=settings.vad_silence_end_seconds,
+            vad_min_command_seconds=settings.vad_min_command_seconds,
         )
 
     def _create_vad(self, settings: AppSettings) -> SileroVAD | None:

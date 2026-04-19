@@ -162,7 +162,15 @@ class SettingsLoader:
             or "eleven_multilingual_v2"
         )
         vad_backend = (os.getenv("JARVIS_VAD_BACKEND", "silero").strip().lower() or "silero")
-        vad_threshold = _parse_float(os.getenv("JARVIS_VAD_THRESHOLD", ""), default=0.35)
+        vad_threshold = _parse_float(os.getenv("JARVIS_VAD_THRESHOLD", ""), default=0.22)
+        _raw_silence_end = os.getenv("JARVIS_VAD_SILENCE_END", "").strip()
+        vad_silence_end: float | None = (
+            _parse_float(_raw_silence_end, default=2.0) if _raw_silence_end else None
+        )
+        _raw_min_cmd = os.getenv("JARVIS_VAD_MIN_COMMAND", "").strip()
+        vad_min_command: float | None = (
+            _parse_float(_raw_min_cmd, default=1.5) if _raw_min_cmd else None
+        )
         # Spotify client_id: env var takes priority; fall back to keyring
         # so the settings dialog can persist the value without editing .env.
         spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
@@ -207,4 +215,6 @@ class SettingsLoader:
             elevenlabs_model=elevenlabs_model,
             vad_backend=vad_backend,
             vad_threshold=vad_threshold,
+            vad_silence_end_seconds=vad_silence_end,
+            vad_min_command_seconds=vad_min_command,
         )
