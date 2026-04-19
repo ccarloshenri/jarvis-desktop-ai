@@ -2,7 +2,7 @@
 
 # Jarvis
 
-**Assistente pessoal de voz para Windows. Fala, interpreta com IA, executa no seu PC e responde de volta.**
+**A premium voice-first desktop assistant for Windows. Talks, thinks with cloud-grade AI, runs on your PC, talks back.**
 
 [![Build Windows EXE](https://github.com/ccarloshenri/jarvis-desktop-ai/actions/workflows/build-windows.yml/badge.svg)](https://github.com/ccarloshenri/jarvis-desktop-ai/actions/workflows/build-windows.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ccarloshenri/jarvis-desktop-ai?label=download)](https://github.com/ccarloshenri/jarvis-desktop-ai/releases/latest)
@@ -13,110 +13,163 @@
 
 ---
 
+## What it is
+
+Jarvis listens for the wake word, transcribes what you said, reasons about it with an LLM, and either runs the command or talks back — with a real voice, through a live HUD that shows every stage of the pipeline in motion.
+
+End-to-end latency from "end of speech" to "first spoken word" lands around **1 second** with the recommended cloud stack (Groq Whisper → Groq Llama 3.3 70B → ElevenLabs Daniel). All local is also supported but slower.
+
 ## Download
 
-1. Acesse a pagina de [**Releases**](https://github.com/ccarloshenri/jarvis-desktop-ai/releases/latest).
-2. Baixe `Jarvis-Windows.zip`.
-3. Extraia em qualquer pasta.
-4. Execute **`Jarvis.exe`**.
+1. Grab the latest **[Release](https://github.com/ccarloshenri/jarvis-desktop-ai/releases/latest)**.
+2. Download `Jarvis-Windows.zip`, extract it anywhere.
+3. Run **`Jarvis.exe`**.
 
-Nao precisa instalar Python, configurar variavel de ambiente nem editar arquivo nenhum.
+No Python install, no environment variables, no manual config files.
 
-Na primeira execucao, o Jarvis abre uma tela pra voce escolher o provedor de IA e colar sua chave. Tudo pela interface.
+## Quick configure
 
-| Provedor | Custo |
+Click the ⚙ icon in the top bar. You get three tabs:
+
+| Tab | What it sets |
 |---|---|
-| **Google Gemini** (recomendado) | Gratis — [pegar chave](https://aistudio.google.com/apikey) |
-| OpenAI GPT | Pago — [pegar chave](https://platform.openai.com/api-keys) |
-| Anthropic Claude | Pago — [pegar chave](https://console.anthropic.com/settings/keys) |
-| Modo Offline | Gratis (comandos basicos) |
+| **Intelligence** | The AI brain. **Groq** (Llama 3.3 70B) is the default — free tier, sub-300ms TTFB. |
+| **Voice** | The speech synthesiser. **ElevenLabs** (Daniel voice) is recommended for near-human output. |
+| **Music** | The music service Jarvis controls. **Spotify** (Web API via OAuth PKCE) is supported. |
 
-Voce pode trocar de provedor a qualquer momento clicando no botao de engrenagem na interface.
+Each provider card shows what it's good at, a usage example, and a **CONFIGURE** button that opens a detail screen with the API-key input and a one-click link to the provider's key-management page. Keys are stored in the OS keyring — never in files.
 
----
+Restart Jarvis after saving a new provider or credential so the audio pipeline picks it up.
 
-## Como usar
+## How to talk to it
 
-Fale **"Jarvis"** seguido do que voce quer:
+Just say **"Jarvis"** followed by whatever you want:
 
-| Voce fala | O que acontece |
+| You say | It does |
 |---|---|
-| "Jarvis, abre o Spotify" | Abre o Spotify desktop |
-| "Jarvis, toca Coldplay" | Pesquisa e toca no Spotify |
-| "Jarvis, manda um oi pro Renan" | Abre DM no Discord e envia |
-| "Jarvis, abre o GitHub" | Abre github.com no navegador |
-| "Jarvis, pesquisa o que e BPMN" | Abre busca no Google |
-| "Jarvis, abre meu email" | Abre Gmail no navegador |
-| "Jarvis, procura email do Joao" | Filtra emails no Gmail |
-| "Jarvis, muta" | Muta mic no Discord |
-| "Jarvis, que dia e hoje?" | Responde por voz com a data |
-| "Jarvis, fecha essa aba" | Fecha a aba ativa do navegador |
+| "Jarvis, play Lana Del Rey on Spotify" | Searches + plays the track via the Spotify API |
+| "Jarvis, open Spotify" / "close Spotify" | Launches or kills the desktop app |
+| "Jarvis, send a hi to Renan on Discord" | Opens the DM and sends the message |
+| "Jarvis, open a new tab" / "close this tab" / "next tab" | Drives the browser with keyboard shortcuts |
+| "Jarvis, search a Neymar video on YouTube" | Opens the search in your default browser |
+| "Jarvis, open my email" | Opens Gmail inbox |
+| "Jarvis, what time is it" / "what's twelve times eight" | Speaks the answer back |
+| "Jarvis, show off" | Puts on a hacker-style window show with AC/DC for a soundtrack |
 
-O "Jarvis" antes e obrigatorio — sem ele, o assistente ignora a frase.
+Each wake also plays a soft two-note chime so you know Jarvis heard you before it starts thinking.
 
----
+## What's under the hood
 
-## Funcionalidades
+```
+ ┌──────────────┐      ┌────────────┐      ┌──────────────┐      ┌──────────────┐
+ │ openwakeword │ →    │ Silero VAD │ →    │ Groq Whisper │ →    │ Groq Llama   │
+ │ always-on    │      │ endpointing│      │ large-v3-    │      │ 3.3 70B      │
+ │ wake-word    │      │ ~350ms end │      │ turbo        │      │ streaming    │
+ │ detector     │      │ of speech  │      │ ~400ms       │      │ JSON parser  │
+ └──────────────┘      └────────────┘      └──────────────┘      └──────────────┘
+                                                                          │
+                                     ┌────────────────────────────────────┤
+                                     ▼                                     ▼
+                              ┌──────────────┐                     ┌──────────────┐
+                              │ ElevenLabs   │                     │ Action       │
+                              │ Daniel voice │                     │ executor     │
+                              │ streaming    │                     │ (Spotify /   │
+                              │ PCM 22050    │                     │  Discord /   │
+                              └──────────────┘                     │  Browser /   │
+                                                                    │  Apps)      │
+                                                                    └──────────────┘
+```
 
-**Conversa com IA** — perguntas em linguagem natural, contexto entre turnos, referencias implicitas ("ele", "isso", "aquela musica").
+- **Wake word**: [openwakeword](https://github.com/dscripka/openWakeWord) hey-jarvis ONNX model, always running, near-zero CPU.
+- **VAD**: [Silero VAD](https://github.com/snakers4/silero-vad) replaces RMS silence detection — ~500ms tighter end-of-speech without clipping.
+- **STT**: [Groq Whisper](https://console.groq.com/) `large-v3-turbo` for multilingual accuracy at cloud latency. Falls back to local `faster-whisper` when no key is set.
+- **LLM**: [Groq Llama 3.3 70B](https://console.groq.com/) via an OpenAI-compatible client with streaming JSON decisions. Action commands can start executing while the LLM is still producing tokens. Also works against local [LM Studio](https://lmstudio.ai/).
+- **TTS**: [ElevenLabs `eleven_multilingual_v2`](https://elevenlabs.io/) for near-human quality. Local [Piper](https://github.com/rhasspy/piper) pre-warmed pool when you want offline.
 
-**Discord** — mandar mensagem por nome ou pronome, abrir DM/servidor/canal, entrar/sair de call, mutar/ensurdecer.
+## Live HUD
 
-**Navegacao Web** — abrir 30+ sites por nome, pesquisar no Google/YouTube/imagens/noticias, gerenciar abas, filtrar emails no Gmail.
+The main window is a full dashboard you can leave open on a second monitor:
 
-**Apps e Midia** — abrir e fechar qualquer app instalado, tocar musica no Spotify por voz.
+- **Status strip**: AI Brain / Voice Engine / Music / Pipeline state cards with live accent dots.
+- **Providers + System**: current provider names, uptime, turns, success rate (donut), wake fires, errors.
+- **Telemetry**: STT / LLM / TTS latencies — current and rolling average over the last 20 turns.
+- **Latency History**: per-turn stacked bars (STT + LLM) so you can see *where* each turn's budget went.
+- **Connections**: pulsing live-state indicators for each subsystem (AI, STT, TTS, wake word, music).
+- **Event Timeline**: scrolling dot-ribbon of recent wake fires, turns, errors.
+- **Centre stage**: J.A.R.V.I.S title → animated orb → state strip (LISTENING / THINKING / SPEAKING) → VU meter → scrolling waveform → last transcript / last response banners.
+- **Live clock** + session log at the bottom.
 
-**Voz** — reconhecimento de fala (Google Speech), sintese neural offline (Piper) com fallback SAPI5, responde antes de executar.
+The whole HUD runs in a single strict palette (cyan / amber / teal) — no stray pinks or branding clashes.
 
----
-
-## Para desenvolvedores
+## For developers
 
 ```bash
 git clone https://github.com/ccarloshenri/jarvis-desktop-ai.git
 cd jarvis-desktop-ai
 pip install -r requirements.txt
+
+# download the Silero VAD model (~2.3 MB)
+powershell -ExecutionPolicy Bypass -File scripts/fetch_silero_vad.ps1
+
 python -m app.main
 ```
 
 ```bash
-pytest
+pytest           # 80/80 green
 ```
 
-### Build do executavel
+### Configuration without the UI
+
+Every setting is also an environment variable — drop them in a `.env` file next to the project (see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `GROQ_API_KEY` | Groq key for LLM + Whisper STT |
+| `ELEVENLABS_API_KEY` | ElevenLabs key for cloud TTS |
+| `JARVIS_LLM_PROVIDER` | `groq` / `lm_studio` |
+| `JARVIS_STT_PROVIDER` | `groq` / `whisper` |
+| `JARVIS_TTS_PROVIDER` | `elevenlabs` / `groq` / `piper` |
+| `JARVIS_LANGUAGE` | `en-US` / `pt-BR` (ack phrases + prompts switch accordingly) |
+| `SPOTIFY_CLIENT_ID` | Spotify Web API (PKCE, no secret) |
+
+Any key set via the UI is stored in the OS keyring and read back on the next launch — you don't need to mirror it into `.env`.
+
+### Build the Windows executable
 
 ```powershell
 pip install -r requirements-build.txt
 .\scripts\build_windows.ps1 -Clean
 ```
 
-### Release automatizado
+### Automated release
 
-Push de tag `v*` dispara GitHub Actions: roda testes, empacota com PyInstaller, publica em Releases.
+Pushing a `v*` tag fires the CI workflow: runs tests, packages with PyInstaller, publishes the zip to Releases.
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
-
----
 
 ## Roadmap
 
-- [ ] STT local (Whisper) pra funcionar sem internet
-- [ ] Gmail API pra ler e resumir emails
-- [ ] Discord RPC pra status e voz sem roubar foco
-- [ ] Lembretes e tarefas
-- [ ] Memoria persistente entre sessoes
-- [ ] TTS streaming
-- [ ] Linux e macOS
+- [x] Local STT (faster-whisper) — works without internet
+- [x] Cloud STT (Groq Whisper large-v3-turbo)
+- [x] Streaming TTS pipeline (chunk-as-it-speaks)
+- [x] Neural endpointing (Silero VAD)
+- [x] Multi-provider settings dialog with provider cards
+- [ ] OpenAI / Anthropic / Gemini LLM integration (UI scaffolding ready)
+- [ ] SoundCloud music provider
+- [ ] Streamlabs TTS integration
+- [ ] Gmail API for reading + summarising emails
+- [ ] Discord RPC for status + voice without stealing focus
+- [ ] Reminders + tasks
+- [ ] Persistent memory across sessions
+- [ ] Linux and macOS packaging
 
----
+## Contributing
 
-## Contribuindo
+Pull requests are welcome. For large changes, please open an issue first so we can align on direction.
 
-Pull requests sao bem-vindos. Pra mudancas grandes, abra uma issue antes.
-
-## Licenca
+## License
 
 [MIT](LICENSE)
