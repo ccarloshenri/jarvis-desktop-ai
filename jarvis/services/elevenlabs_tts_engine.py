@@ -93,21 +93,36 @@ class ElevenLabsTTSEngine:
             },
         }
 
+        # Single retry on transient network failure — ElevenLabs is
+        # usually reliable but a dropped TLS connection mid-session
+        # shouldn't force the whole utterance through the SAPI
+        # fallback. Non-5xx HTTP errors (e.g. 401 bad key, 429 quota)
+        # are NOT retried because the second attempt would fail the
+        # same way.
         t0 = time.perf_counter()
-        try:
-            response = requests.post(
-                url,
-                headers=headers,
-                params=params,
-                json=body,
-                timeout=self._timeout_s,
-            )
-        except requests.ConnectionError as exc:
-            raise TtsEngineError(f"elevenlabs unreachable: {exc}") from exc
-        except requests.Timeout as exc:
-            raise TtsEngineError(f"elevenlabs timeout after {self._timeout_s}s") from exc
-        except requests.RequestException as exc:
-            raise TtsEngineError(str(exc)) from exc
+        response = None
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    params=params,
+                    json=body,
+                    timeout=self._timeout_s,
+                )
+                break
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                last_exc = exc
+                if attempt == 0:
+                    time.sleep(0.25)
+                    continue
+            except requests.RequestException as exc:
+                raise TtsEngineError(str(exc)) from exc
+        if response is None:
+            raise TtsEngineError(
+                f"elevenlabs unreachable after retry: {last_exc}"
+            ) from last_exc
 
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         if not response.ok:

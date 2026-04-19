@@ -98,7 +98,13 @@ class ApplicationFactory:
             llm=llm,
             text_to_speech=text_to_speech,
             command_mapper=CommandMapper(),
-            conversation_memory=ConversationMemory(max_turns=10),
+            conversation_memory=ConversationMemory(
+                max_turns=10,
+                # Persist to the user's AppData folder so context
+                # survives restarts. Not committed, per-user, cleared
+                # by a Windows user switch.
+                persistence_path=self._project_root / "data" / "conversation_memory.json",
+            ),
             correction_service=correction_service,
             llm_streaming=settings.llm_streaming,
         )
@@ -129,25 +135,25 @@ class ApplicationFactory:
         )
 
     def _create_llm(self, settings: AppSettings) -> ILLM:
+        """Build the LLM backend from settings.
+
+        Five providers supported — all implementing the same
+        `chat()` / `chat_stream()` contract so `LocalLLM` doesn't
+        care which one is behind it:
+
+        - groq        → OpenAI-compatible (LMStudioService, cloud)
+        - openai      → OpenAI-compatible (LMStudioService, api.openai)
+        - gemini      → Google's OpenAI-compat endpoint
+                        (generativelanguage.googleapis.com/...openai/)
+        - anthropic   → native Messages API via AnthropicService
+        - lm_studio   → local OpenAI-compatible (LMStudioService)
+
+        Missing credential → fall back to LM Studio (local). The log
+        line tells the user exactly what happened so they can fix it.
+        """
         provider = (settings.llm_provider or "lm_studio").lower()
-        if provider == "groq" and settings.groq_api_key:
-            service = LMStudioService(
-                base_url="https://api.groq.com/openai/v1",
-                model=settings.groq_llm_model,
-                api_key=settings.groq_api_key,
-            )
-            provider_label = "groq"
-        else:
-            if provider == "groq":
-                LOGGER.warning(
-                    "groq_llm_no_api_key_falling_back_to_lm_studio",
-                    extra={"event_data": {"hint": "set GROQ_API_KEY or use settings dialog"}},
-                )
-            service = LMStudioService(
-                base_url=settings.lm_studio_url,
-                model=settings.lm_studio_model,
-            )
-            provider_label = "lm_studio"
+        service, provider_label = self._build_llm_service(settings, provider)
+
         reachable = service.ping()
         LOGGER.info(
             "llm_backend_selected",
@@ -166,6 +172,75 @@ class ApplicationFactory:
                 extra={"event_data": {"provider": provider_label, "url": service.base_url}},
             )
         return LocalLLM(service=service)
+
+    def _build_llm_service(
+        self, settings: AppSettings, provider: str
+    ) -> tuple[object, str]:
+        """Return (service, resolved_provider_label) for the picked
+        provider, falling back to LM Studio when credentials are
+        missing. Split out so _create_llm stays readable and each
+        provider branch is a single obvious block."""
+        from jarvis.services.anthropic_service import AnthropicService
+
+        if provider == "groq" and settings.groq_api_key:
+            return (
+                LMStudioService(
+                    base_url="https://api.groq.com/openai/v1",
+                    model=settings.groq_llm_model,
+                    api_key=settings.groq_api_key,
+                ),
+                "groq",
+            )
+        if provider == "openai" and settings.openai_api_key:
+            return (
+                LMStudioService(
+                    base_url="https://api.openai.com/v1",
+                    model=settings.openai_model,
+                    api_key=settings.openai_api_key,
+                ),
+                "openai",
+            )
+        if provider == "gemini" and settings.gemini_api_key:
+            # Google exposes an OpenAI-compat endpoint for Gemini —
+            # lets us reuse the same streaming client the other
+            # OpenAI-compat providers go through.
+            return (
+                LMStudioService(
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+                    model=settings.gemini_model,
+                    api_key=settings.gemini_api_key,
+                ),
+                "gemini",
+            )
+        if provider == "anthropic" and settings.anthropic_api_key:
+            return (
+                AnthropicService(
+                    api_key=settings.anthropic_api_key,
+                    model=settings.anthropic_model,
+                ),
+                "anthropic",
+            )
+
+        # Any branch that didn't return above falls through to LM
+        # Studio. Log *why* so the user can trace it.
+        if provider != "lm_studio":
+            LOGGER.warning(
+                "llm_backend_missing_credentials_fallback",
+                extra={
+                    "event_data": {
+                        "requested": provider,
+                        "fallback": "lm_studio",
+                        "hint": "set the provider's api key via the settings dialog",
+                    }
+                },
+            )
+        return (
+            LMStudioService(
+                base_url=settings.lm_studio_url,
+                model=settings.lm_studio_model,
+            ),
+            "lm_studio",
+        )
 
     def _create_spotify_controller(self, client_id: str) -> SpotifyController | SpotifyKeyboardController:
         if client_id:

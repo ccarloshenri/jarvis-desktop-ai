@@ -19,10 +19,13 @@ from jarvis.interfaces.ispeech_to_text import ISpeechToText
 from jarvis.models.app_settings import AppSettings
 from jarvis.services.assistant_service import AssistantService
 from jarvis.services.credential_store import (
+    ANTHROPIC_API_KEY_USERNAME,
     CredentialStore,
     ELEVENLABS_API_KEY_USERNAME,
     ELEVENLABS_VOICE_ID_USERNAME,
+    GEMINI_API_KEY_USERNAME,
     GROQ_API_KEY_USERNAME,
+    OPENAI_API_KEY_USERNAME,
     SPOTIFY_CLIENT_ID_USERNAME,
 )
 from jarvis.services.spotify_auth import SpotifyPkceAuth
@@ -178,6 +181,9 @@ class ApplicationController(QObject):
                 groq_api_key=self._settings.groq_api_key,
                 elevenlabs_api_key=self._settings.elevenlabs_api_key,
                 elevenlabs_voice_id=self._settings.elevenlabs_voice_id,
+                openai_api_key=self._settings.openai_api_key,
+                anthropic_api_key=self._settings.anthropic_api_key,
+                gemini_api_key=self._settings.gemini_api_key,
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
@@ -191,6 +197,12 @@ class ApplicationController(QObject):
                 needs_restart = True
             if self._apply_elevenlabs_change(
                 dialog.elevenlabs_api_key, dialog.elevenlabs_voice_id
+            ):
+                needs_restart = True
+            if self._apply_cloud_llm_keys(
+                openai=dialog.openai_api_key,
+                anthropic=dialog.anthropic_api_key,
+                gemini=dialog.gemini_api_key,
             ):
                 needs_restart = True
             if self._apply_provider_picks(
@@ -322,6 +334,64 @@ class ApplicationController(QObject):
             extra={
                 "event_data": {
                     "has_key": bool(new_api_key),
+                    "note": "restart jarvis to apply",
+                }
+            },
+        )
+        return True
+
+    def _apply_cloud_llm_keys(
+        self, *, openai: str, anthropic: str, gemini: str
+    ) -> bool:
+        """Persist the cloud LLM API keys via keyring. Mirrors the
+        per-provider apply methods: returns True when at least one
+        value actually changed so the caller prompts for a restart.
+        These keys aren't hot-swappable because LocalLLM is built
+        once at boot around a single backend service."""
+        changes = 0
+        for key_name, new_value, current, storage_key in (
+            (
+                "openai",
+                openai,
+                self._settings.openai_api_key,
+                OPENAI_API_KEY_USERNAME,
+            ),
+            (
+                "anthropic",
+                anthropic,
+                self._settings.anthropic_api_key,
+                ANTHROPIC_API_KEY_USERNAME,
+            ),
+            (
+                "gemini",
+                gemini,
+                self._settings.gemini_api_key,
+                GEMINI_API_KEY_USERNAME,
+            ),
+        ):
+            if new_value == current:
+                continue
+            changes += 1
+            if new_value:
+                self._credential_store.set(storage_key, new_value)
+            else:
+                self._credential_store.delete(storage_key)
+
+        if changes == 0:
+            return False
+        self._settings = replace(
+            self._settings,
+            openai_api_key=openai,
+            anthropic_api_key=anthropic,
+            gemini_api_key=gemini,
+        )
+        LOGGER.info(
+            "cloud_llm_keys_saved",
+            extra={
+                "event_data": {
+                    "has_openai": bool(openai),
+                    "has_anthropic": bool(anthropic),
+                    "has_gemini": bool(gemini),
                     "note": "restart jarvis to apply",
                 }
             },

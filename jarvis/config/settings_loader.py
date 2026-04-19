@@ -9,9 +9,12 @@ from jarvis.config.strings import DEFAULT_LANGUAGE
 from jarvis.models.app_settings import AppSettings
 from jarvis.services.credential_store import (
     CredentialStore,
+    ANTHROPIC_API_KEY_USERNAME,
     ELEVENLABS_API_KEY_USERNAME,
     ELEVENLABS_VOICE_ID_USERNAME,
+    GEMINI_API_KEY_USERNAME,
     GROQ_API_KEY_USERNAME,
+    OPENAI_API_KEY_USERNAME,
     SPOTIFY_CLIENT_ID_USERNAME,
 )
 
@@ -63,6 +66,40 @@ class SettingsLoader:
         groq_llm_model = (
             os.getenv("JARVIS_GROQ_LLM_MODEL", "llama-3.3-70b-versatile").strip()
             or "llama-3.3-70b-versatile"
+        )
+        # OpenAI / Anthropic / Gemini — same pattern as the other
+        # credentials: env wins, keyring fills in what the settings
+        # dialog saved. Never reads raw strings from source control.
+        store = CredentialStore()
+        openai_api_key = (
+            os.getenv("OPENAI_API_KEY", "").strip()
+            or os.getenv("JARVIS_OPENAI_API_KEY", "").strip()
+            or store.get(OPENAI_API_KEY_USERNAME)
+            or ""
+        )
+        openai_model = (
+            os.getenv("JARVIS_OPENAI_MODEL", "gpt-4o-mini").strip()
+            or "gpt-4o-mini"
+        )
+        anthropic_api_key = (
+            os.getenv("ANTHROPIC_API_KEY", "").strip()
+            or os.getenv("JARVIS_ANTHROPIC_API_KEY", "").strip()
+            or store.get(ANTHROPIC_API_KEY_USERNAME)
+            or ""
+        )
+        anthropic_model = (
+            os.getenv("JARVIS_ANTHROPIC_MODEL", "claude-3-5-haiku-latest").strip()
+            or "claude-3-5-haiku-latest"
+        )
+        gemini_api_key = (
+            os.getenv("GEMINI_API_KEY", "").strip()
+            or os.getenv("JARVIS_GEMINI_API_KEY", "").strip()
+            or store.get(GEMINI_API_KEY_USERNAME)
+            or ""
+        )
+        gemini_model = (
+            os.getenv("JARVIS_GEMINI_MODEL", "gemini-2.0-flash").strip()
+            or "gemini-2.0-flash"
         )
         stt_provider = (os.getenv("JARVIS_STT_PROVIDER", "whisper").strip().lower() or "whisper")
         # GROQ_API_KEY is the convention used across Groq's own SDKs;
@@ -143,6 +180,12 @@ class SettingsLoader:
             lm_studio_url=lm_studio_url,
             lm_studio_model=lm_studio_model,
             groq_llm_model=groq_llm_model,
+            openai_api_key=openai_api_key,
+            openai_model=openai_model,
+            anthropic_api_key=anthropic_api_key,
+            anthropic_model=anthropic_model,
+            gemini_api_key=gemini_api_key,
+            gemini_model=gemini_model,
             stt_provider=stt_provider,
             groq_api_key=groq_api_key,
             groq_stt_model=groq_stt_model,

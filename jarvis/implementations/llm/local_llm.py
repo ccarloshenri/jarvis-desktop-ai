@@ -47,6 +47,11 @@ discord_send_message / {target_type:"dm"|"channel",target_name,channel_name?,ser
 discord_reply_current / {message}; discord_join_voice / {channel_name}
 discord_set_status / {status:"online"|"idle"|"dnd"|"invisible",custom_text?}
 show_off / {} — triggers on "show off", "impress me", "give me a show", "put on a show"
+volume_up|volume_down|volume_mute / {} — system volume
+screenshot / {} — capture current desktop
+clipboard_read / {} — read and speak clipboard text
+lock_screen / {} — lock the windows session
+open_folder / {target} — target is a folder name (downloads, documents, desktop, pictures, music, videos) or a path
 
 Use conversation history to resolve "it/that/there".
 
@@ -73,7 +78,14 @@ ACTION examples:
 "open the browser" → {"type":"action","app":"browser","action":"browser_open","parameters":{},"spoken_response":"Done."}
 "close the browser" → {"type":"action","app":"browser","action":"browser_close","parameters":{},"spoken_response":"Done."}
 "show off" → {"type":"action","app":null,"action":"show_off","parameters":{},"spoken_response":"Observe, sir."}
-"impress me" → {"type":"action","app":null,"action":"show_off","parameters":{},"spoken_response":"Observe, sir."}"""
+"impress me" → {"type":"action","app":null,"action":"show_off","parameters":{},"spoken_response":"Observe, sir."}
+"turn up the volume" → {"type":"action","app":null,"action":"volume_up","parameters":{},"spoken_response":"Done."}
+"lower the volume" → {"type":"action","app":null,"action":"volume_down","parameters":{},"spoken_response":"Done."}
+"mute" → {"type":"action","app":null,"action":"volume_mute","parameters":{},"spoken_response":"Done."}
+"take a screenshot" → {"type":"action","app":null,"action":"screenshot","parameters":{},"spoken_response":"Done."}
+"what's on my clipboard" → {"type":"action","app":null,"action":"clipboard_read","parameters":{},"spoken_response":"Reading the clipboard, sir."}
+"lock the screen" → {"type":"action","app":null,"action":"lock_screen","parameters":{},"spoken_response":"Locking, sir."}
+"open my downloads folder" → {"type":"action","app":null,"action":"open_folder","parameters":{"target":"downloads"},"spoken_response":"Opening Downloads, sir."}"""
 
 
 class LocalLLM(ILLM):

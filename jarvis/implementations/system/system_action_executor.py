@@ -15,6 +15,7 @@ from jarvis.interfaces.ispotify_controller import ISpotifyController
 from jarvis.models.action_result import ActionResult
 from jarvis.models.command import Command
 from jarvis.services.show_off_service import ShowOffService
+from jarvis.services.system_control_service import SystemControlService
 
 
 class SystemActionExecutor(IActionExecutor):
@@ -24,6 +25,7 @@ class SystemActionExecutor(IActionExecutor):
         spotify_controller: ISpotifyController | None = None,
         apps: list[BaseApp] | None = None,
         show_off_service: ShowOffService | None = None,
+        system_control: SystemControlService | None = None,
     ) -> None:
         self._application_finder = application_finder
         self._spotify_controller = spotify_controller
@@ -31,6 +33,7 @@ class SystemActionExecutor(IActionExecutor):
         self._show_off_service = show_off_service or ShowOffService(
             spotify_controller=spotify_controller
         )
+        self._system_control = system_control or SystemControlService()
         # If the executor was handed both a show service and a spotify
         # controller, make sure the show can reach the controller —
         # covers the case where the caller wired them up independently.
@@ -57,7 +60,59 @@ class SystemActionExecutor(IActionExecutor):
             return self._search_web(command)
         if command.action == ActionType.SHOW_OFF:
             return self._show_off(command)
+        if command.action == ActionType.VOLUME_UP:
+            return self._volume_up(command)
+        if command.action == ActionType.VOLUME_DOWN:
+            return self._volume_down(command)
+        if command.action == ActionType.VOLUME_MUTE:
+            return self._volume_mute(command)
+        if command.action == ActionType.SCREENSHOT:
+            return self._screenshot(command)
+        if command.action == ActionType.CLIPBOARD_READ:
+            return self._clipboard_read(command)
+        if command.action == ActionType.LOCK_SCREEN:
+            return self._lock_screen(command)
+        if command.action == ActionType.OPEN_FOLDER:
+            return self._open_folder(command)
         raise ValueError(f"Unsupported action '{command.action.value}'.")
+
+    def _volume_up(self, command: Command) -> ActionResult:
+        ok = self._system_control.volume_up()
+        return ActionResult(ok, "Volume up." if ok else "Volume control unavailable.", command.action, command.target)
+
+    def _volume_down(self, command: Command) -> ActionResult:
+        ok = self._system_control.volume_down()
+        return ActionResult(ok, "Volume down." if ok else "Volume control unavailable.", command.action, command.target)
+
+    def _volume_mute(self, command: Command) -> ActionResult:
+        ok = self._system_control.volume_mute()
+        return ActionResult(ok, "Toggled mute." if ok else "Volume control unavailable.", command.action, command.target)
+
+    def _screenshot(self, command: Command) -> ActionResult:
+        path = self._system_control.screenshot()
+        if path is None:
+            return ActionResult(False, "Could not capture screen.", command.action, command.target)
+        return ActionResult(True, f"Screenshot saved to {path.name}.", command.action, command.target)
+
+    def _clipboard_read(self, command: Command) -> ActionResult:
+        text = self._system_control.clipboard_read()
+        if not text:
+            return ActionResult(False, "Clipboard empty.", command.action, command.target)
+        # Stash the clipboard text in the result message so the TTS
+        # layer can read it back to the user.
+        preview = text if len(text) <= 180 else text[:177] + "…"
+        return ActionResult(True, preview, command.action, command.target)
+
+    def _lock_screen(self, command: Command) -> ActionResult:
+        ok = self._system_control.lock_screen()
+        return ActionResult(ok, "Locking." if ok else "Lock unavailable.", command.action, command.target)
+
+    def _open_folder(self, command: Command) -> ActionResult:
+        target = command.target or (command.parameters or {}).get("folder", "")
+        ok = self._system_control.open_folder(target)
+        if ok:
+            return ActionResult(True, f"Opened {target}.", command.action, command.target)
+        return ActionResult(False, f"Could not open folder '{target}'.", command.action, command.target)
 
     def _show_off(self, command: Command) -> ActionResult:
         started = self._show_off_service.run()

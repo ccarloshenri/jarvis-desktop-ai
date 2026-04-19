@@ -9,10 +9,19 @@ class AppSettings:
     debug: bool
     spotify_client_id: str = ""
     music_provider: str = "spotify"  # "spotify" or "soundcloud" (SC coming soon)
-    llm_provider: str = "lm_studio"  # "lm_studio" or "groq"
+    # Supported values: "lm_studio" (local), "groq", "openai",
+    # "anthropic", "gemini". Settings dialog exposes all of them;
+    # missing-credential fallback handled in the factory.
+    llm_provider: str = "lm_studio"
     lm_studio_url: str = "http://localhost:1234/v1"
     lm_studio_model: str = "qwen2.5-3b-instruct"
     groq_llm_model: str = "llama-3.3-70b-versatile"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-3-5-haiku-latest"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
     stt_provider: str = "whisper"
     groq_api_key: str = ""
     groq_stt_model: str = "whisper-large-v3-turbo"

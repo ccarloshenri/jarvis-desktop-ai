@@ -68,6 +68,13 @@ _ACK_KEYS = {
     ActionType.BROWSER_SEARCH_EMAIL_FROM: "ack_browser_search_email_from",
     ActionType.BROWSER_SEARCH_EMAIL_SUBJECT: "ack_browser_search_email_subject",
     ActionType.SHOW_OFF: "ack_show_off",
+    ActionType.VOLUME_UP: "ack_volume_up",
+    ActionType.VOLUME_DOWN: "ack_volume_down",
+    ActionType.VOLUME_MUTE: "ack_volume_mute",
+    ActionType.SCREENSHOT: "ack_screenshot",
+    ActionType.CLIPBOARD_READ: "ack_clipboard_read",
+    ActionType.LOCK_SCREEN: "ack_lock_screen",
+    ActionType.OPEN_FOLDER: "ack_open_folder",
 }
 
 _DISCORD_LABEL_KEYS = ("target_name", "channel_name", "server_name", "site", "query", "sender", "subject", "url")

@@ -10,6 +10,9 @@ SPOTIFY_CLIENT_ID_USERNAME = "spotify_client_id"
 GROQ_API_KEY_USERNAME = "groq_api_key"
 ELEVENLABS_API_KEY_USERNAME = "elevenlabs_api_key"
 ELEVENLABS_VOICE_ID_USERNAME = "elevenlabs_voice_id"
+OPENAI_API_KEY_USERNAME = "openai_api_key"
+ANTHROPIC_API_KEY_USERNAME = "anthropic_api_key"
+GEMINI_API_KEY_USERNAME = "gemini_api_key"
 
 
 class KeyringBackend(Protocol):

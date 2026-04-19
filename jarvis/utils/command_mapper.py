@@ -51,4 +51,10 @@ _TARGETLESS_ACTIONS = {
     ActionType.BROWSER_OPEN_EMAIL,
     ActionType.BROWSER_CHECK_UNREAD,
     ActionType.SHOW_OFF,
+    ActionType.VOLUME_UP,
+    ActionType.VOLUME_DOWN,
+    ActionType.VOLUME_MUTE,
+    ActionType.SCREENSHOT,
+    ActionType.CLIPBOARD_READ,
+    ActionType.LOCK_SCREEN,
 }

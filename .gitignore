@@ -32,6 +32,9 @@ logs/
 /tools/
 /models/
 
+# Per-user runtime data (conversation memory, caches)
+/data/
+
 # Internal docs (release notes, social posts — not part of the product)
 SOCIAL_POST*.md
 RELEASE_NOTES*.md

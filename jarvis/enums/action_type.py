@@ -46,3 +46,13 @@ class ActionType(Enum):
     BROWSER_SEARCH_EMAIL_SUBJECT = "browser_search_email_subject"
 
     SHOW_OFF = "show_off"
+
+    # System-level actions that work regardless of which app is
+    # focused.  Mapped to Windows APIs in SystemActionExecutor.
+    VOLUME_UP = "volume_up"
+    VOLUME_DOWN = "volume_down"
+    VOLUME_MUTE = "volume_mute"
+    SCREENSHOT = "screenshot"
+    CLIPBOARD_READ = "clipboard_read"
+    LOCK_SCREEN = "lock_screen"
+    OPEN_FOLDER = "open_folder"

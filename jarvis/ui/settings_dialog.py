@@ -49,7 +49,12 @@ _ELEVENLABS_DEFAULT_VOICE_ID = "onwK4e9ZLuTAKqWW03F9"
 # capitalisation — "OpenAI", not "openai" — per the user's request.
 
 
-def _llm_options(has_groq_key: bool) -> list[ProviderOption]:
+def _llm_options(
+    has_groq_key: bool,
+    has_openai_key: bool = False,
+    has_anthropic_key: bool = False,
+    has_gemini_key: bool = False,
+) -> list[ProviderOption]:
     return [
         ProviderOption(
             key="groq",
@@ -93,8 +98,8 @@ def _llm_options(has_groq_key: bool) -> list[ProviderOption]:
             strength="Best for complex commands",
             example="Jarvis, summarise my last three emails and draft a reply.",
             website="https://platform.openai.com/api-keys",
-            status="coming_soon",
-            status_text="COMING SOON",
+            status="active" if has_openai_key else "ready",
+            status_text="ACTIVE" if has_openai_key else "REQUIRES KEY",
             credential_key="openai_api_key",
             credential_label="OPENAI API KEY",
             credential_placeholder="sk-...",
@@ -114,8 +119,8 @@ def _llm_options(has_groq_key: bool) -> list[ProviderOption]:
             strength="Best for thoughtful chat",
             example="Jarvis, explain the tradeoffs of Rust vs Go.",
             website="https://console.anthropic.com/settings/keys",
-            status="coming_soon",
-            status_text="COMING SOON",
+            status="active" if has_anthropic_key else "ready",
+            status_text="ACTIVE" if has_anthropic_key else "REQUIRES KEY",
             credential_key="anthropic_api_key",
             credential_label="ANTHROPIC API KEY",
             credential_placeholder="sk-ant-...",
@@ -136,8 +141,8 @@ def _llm_options(has_groq_key: bool) -> list[ProviderOption]:
             strength="Best for breadth + multimodal",
             example="Jarvis, what's on my calendar tomorrow?",
             website="https://aistudio.google.com/app/apikey",
-            status="coming_soon",
-            status_text="COMING SOON",
+            status="active" if has_gemini_key else "ready",
+            status_text="ACTIVE" if has_gemini_key else "REQUIRES KEY",
             credential_key="gemini_api_key",
             credential_label="GOOGLE AI STUDIO KEY",
             credential_placeholder="AIza...",
@@ -330,6 +335,9 @@ class SettingsDialog(QDialog):
         groq_api_key: str = "",
         elevenlabs_api_key: str = "",
         elevenlabs_voice_id: str = _ELEVENLABS_DEFAULT_VOICE_ID,
+        openai_api_key: str = "",
+        anthropic_api_key: str = "",
+        gemini_api_key: str = "",
     ) -> None:
         super().__init__(parent)
         self._drag_origin: QPoint | None = None
@@ -349,16 +357,19 @@ class SettingsDialog(QDialog):
             "groq_api_key": groq_api_key.strip(),
             "elevenlabs_api_key": elevenlabs_api_key.strip(),
             "elevenlabs_voice_id": (elevenlabs_voice_id or _ELEVENLABS_DEFAULT_VOICE_ID).strip(),
-            # Slots for future providers — pre-populated empty so the
-            # detail view inputs render without KeyError.
-            "openai_api_key": "",
-            "anthropic_api_key": "",
-            "gemini_api_key": "",
+            "openai_api_key": openai_api_key.strip(),
+            "anthropic_api_key": anthropic_api_key.strip(),
+            "gemini_api_key": gemini_api_key.strip(),
         }
 
         # Pre-select picked provider from settings when building each tab.
         self._intelligence_tab = _CardPickerTab(
-            options=_llm_options(has_groq_key=bool(groq_api_key)),
+            options=_llm_options(
+                has_groq_key=bool(groq_api_key),
+                has_openai_key=bool(openai_api_key),
+                has_anthropic_key=bool(anthropic_api_key),
+                has_gemini_key=bool(gemini_api_key),
+            ),
             initial_key=llm_provider,
             credential_reader=self._credentials.get,
             credential_writer=self._credentials.__setitem__,
@@ -411,6 +422,18 @@ class SettingsDialog(QDialog):
     @property
     def elevenlabs_voice_id(self) -> str:
         return self._credentials.get("elevenlabs_voice_id", "").strip() or _ELEVENLABS_DEFAULT_VOICE_ID
+
+    @property
+    def openai_api_key(self) -> str:
+        return self._credentials.get("openai_api_key", "").strip()
+
+    @property
+    def anthropic_api_key(self) -> str:
+        return self._credentials.get("anthropic_api_key", "").strip()
+
+    @property
+    def gemini_api_key(self) -> str:
+        return self._credentials.get("gemini_api_key", "").strip()
 
     # ── build ──────────────────────────────────────────────────────────
 
