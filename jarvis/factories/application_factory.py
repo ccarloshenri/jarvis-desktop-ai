@@ -75,7 +75,7 @@ class ApplicationFactory:
         strings = Strings(language=settings.language)
         self._diagnostics.crash_context.set_provider("local")
         event_bus = JarvisEventBus()
-        llm = self._create_llm(settings)
+        llm = self._create_llm(settings, strings=strings)
         # Application finder created early so we can (a) pass it to the
         # STT provider for dynamic vocabulary and (b) hand it to the app
         # entity resolver for context-aware target validation.
@@ -134,8 +134,8 @@ class ApplicationFactory:
             settings=settings,
         )
 
-    def _create_llm(self, settings: AppSettings) -> ILLM:
-        """Build the LLM backend from settings.
+    def _create_llm(self, settings: AppSettings, strings: Strings | None = None) -> ILLM:
+        """Build the LLM backend + failover chain from settings.
 
         Five providers supported — all implementing the same
         `chat()` / `chat_stream()` contract so `LocalLLM` doesn't
@@ -148,30 +148,74 @@ class ApplicationFactory:
         - anthropic   → native Messages API via AnthropicService
         - lm_studio   → local OpenAI-compatible (LMStudioService)
 
-        Missing credential → fall back to LM Studio (local). The log
-        line tells the user exactly what happened so they can fix it.
+        The primary provider comes from `settings.llm_provider`. Any
+        OTHER provider the user has credentials for becomes a
+        fallback in priority order — so hitting a daily quota on
+        Groq rolls over to Gemini / Anthropic / OpenAI / LM Studio
+        automatically.
         """
         provider = (settings.llm_provider or "lm_studio").lower()
-        service, provider_label = self._build_llm_service(settings, provider)
+        primary, provider_label = self._build_llm_service(settings, provider)
+        fallbacks = self._build_llm_fallback_chain(settings, provider)
 
-        reachable = service.ping()
+        reachable = primary.ping()
         LOGGER.info(
             "llm_backend_selected",
             extra={
                 "event_data": {
                     "provider": provider_label,
                     "reachable": reachable,
-                    "url": service.base_url,
-                    "model": service.model,
+                    "url": primary.base_url,
+                    "model": primary.model,
+                    "fallback_count": len(fallbacks),
                 }
             },
         )
         if not reachable:
             LOGGER.warning(
                 "llm_backend_not_reachable_at_boot",
-                extra={"event_data": {"provider": provider_label, "url": service.base_url}},
+                extra={"event_data": {"provider": provider_label, "url": primary.base_url}},
             )
-        return LocalLLM(service=service)
+        return LocalLLM(
+            service=primary,
+            fallback_services=fallbacks,
+            strings=strings,
+        )
+
+    def _build_llm_fallback_chain(
+        self, settings: AppSettings, primary_provider: str
+    ) -> list[object]:
+        """Every provider the user has credentials for — except the
+        one already picked as primary — becomes a fallback."""
+        candidates: list[str] = []
+        if primary_provider != "groq" and settings.groq_api_key:
+            candidates.append("groq")
+        if primary_provider != "gemini" and settings.gemini_api_key:
+            candidates.append("gemini")
+        if primary_provider != "openai" and settings.openai_api_key:
+            candidates.append("openai")
+        if primary_provider != "anthropic" and settings.anthropic_api_key:
+            candidates.append("anthropic")
+        if primary_provider != "lm_studio":
+            # LM Studio is always at the end of the chain — it'll fail
+            # with a clear "unreachable" error if the user doesn't
+            # have it running, which is a better story than a silent
+            # fallback to SAPI.
+            candidates.append("lm_studio")
+
+        fallbacks: list[object] = []
+        for name in candidates:
+            try:
+                svc, _ = self._build_llm_service(settings, name)
+            except Exception:
+                LOGGER.debug(
+                    "fallback_build_failed",
+                    extra={"event_data": {"provider": name}},
+                    exc_info=True,
+                )
+                continue
+            fallbacks.append(svc)
+        return fallbacks
 
     def _build_llm_service(
         self, settings: AppSettings, provider: str

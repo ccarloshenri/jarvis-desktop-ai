@@ -73,7 +73,8 @@ def test_decide_falls_back_on_generic_error() -> None:
     decision = llm.decide("qualquer coisa")
 
     assert decision.type == "chat"
-    assert "processar" in decision.spoken_response.lower()
+    # Default (no Strings injected) uses the English process error.
+    assert "process" in decision.spoken_response.lower()
 
 
 def test_decide_falls_back_on_unparseable_output() -> None:
@@ -83,7 +84,22 @@ def test_decide_falls_back_on_unparseable_output() -> None:
     decision = llm.decide("qualquer coisa")
 
     assert decision.type == "chat"
-    assert "entender" in decision.spoken_response.lower()
+    # Default (no Strings injected) uses the English unintelligible fallback.
+    assert "understand" in decision.spoken_response.lower()
+
+
+def test_decide_uses_injected_strings_for_fallbacks() -> None:
+    from jarvis.config.strings import Strings
+
+    service = FakeLMStudioService(raise_exc=LMStudioError("boom"))
+    llm = LocalLLM(service=service, strings=Strings("pt-BR"))
+
+    decision = llm.decide("qualquer coisa")
+
+    # When Strings is injected, errors route through the catalogue —
+    # pt-BR users hear the Portuguese fallback instead of the English
+    # default hard-coded into the class.
+    assert "processar" in decision.spoken_response.lower()
 
 
 def test_decide_passes_history_as_chat_messages() -> None:
